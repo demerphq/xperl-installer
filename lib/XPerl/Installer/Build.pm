@@ -40,6 +40,12 @@ sub new ($class, %args) {
     my $repair_timeout = $args{repair_timeout} // 600;
     die "repair timeout must be a positive integer\n"
         unless $repair_timeout =~ /\A[1-9]\d*\z/;
+    # A repair command may start a paid AI agent. One builder serves a whole
+    # installer run, so this caps the agent calls of the run, not of one
+    # release. The default allows one release worth of attempts.
+    my $repair_limit = $args{repair_limit} // $repair_attempts;
+    die "repair limit must be a non-negative integer\n"
+        unless $repair_limit =~ /\A\d+\z/;
     make_path($args{prefix}, $args{workdir});
     return bless {
         prefix  => abs_path($args{prefix}),
@@ -49,6 +55,12 @@ sub new ($class, %args) {
         repair_command => $repair_command,
         repair_attempts => $repair_attempts,
         repair_timeout => $repair_timeout,
+        repair_limit => $repair_limit,
+        repair_calls => 0,
+        # Separate installer processes share this, so a user's agent never
+        # runs twice at once.
+        repair_lock => $args{repair_lock} // File::Spec->catfile(
+            File::Spec->tmpdir, "xperl-repair-$<.lock"),
     }, $class;
 }
 
@@ -201,6 +213,13 @@ sub install ($self, $release, %options) {
                 die $failure
                     if $phase eq 'install' || !$self->{repair_command}
                         || $attempt > $self->{repair_attempts};
+                if ($self->{repair_calls} >= $self->{repair_limit}) {
+                    $record->{repair_skipped} =
+                        "repair limit of $self->{repair_limit} calls reached";
+                    chomp $failure;
+                    die "$failure; repair skipped: $record->{repair_skipped}"
+                        . " (raise it with --repair-limit)\n";
+                }
                 my $request_path = File::Spec->catfile($work,
                                                         "repair-$attempt.json");
                 my $request = {
@@ -229,8 +248,11 @@ sub install ($self, $release, %options) {
                 my $repair_log = File::Spec->catfile($work,
                                                      "repair-$attempt.log");
                 my $before_files = XPerl::Installer::Proposal::files($source);
+                ++$self->{repair_calls};
+                my $repair_lock = _lock($self->{repair_lock});
                 my ($repair_status, $repair_timed_out) = $self->_run($source, $repair_log,
                     { timeout => $self->{repair_timeout} }, @repair_command);
+                undef $repair_lock;
                 ++$repair_calls;
                 push @{$record->{phases}}, {
                     name => 'repair', attempt => $attempt,

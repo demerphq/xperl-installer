@@ -123,10 +123,22 @@ and it leaves color settings such as `NO_COLOR` to the distribution's tests.
 ## Optional repair command
 
 `--repair-command PATH` or `--agent NAME` enables an external repair program after a failed
-configure, build, or test phase. `--repair-attempts N` limits repair calls;
-the default is two. `--repair-timeout SECONDS` limits each call; the default
-is 600 seconds. A selected agent profile can supply these limits. The
-installer never calls a repair program without an explicit selection. The
+configure, build, or test phase. `--repair-attempts N` limits repair calls
+for one release; the default is two. `--repair-timeout SECONDS` limits each
+call; the default is 600 seconds.
+
+A repair program may start a paid AI agent, so its use is bounded for the
+whole run as well. `--repair-limit N` caps the repair calls one installer
+run may make across all releases. The default is the attempt limit, which is
+one release's worth. Once the limit is reached, later failures are reported
+with "repair skipped: repair limit of N calls reached" instead of calling the
+program, so going further needs an explicit higher limit. Repair calls never
+run concurrently: each holds an exclusive per-user lock in the temporary
+directory, so separate installer processes take turns, and parallel builds
+(`--jobs`) run repairs one at a time after the parallel pass. A selected
+agent profile can supply `attempts`, `timeout`, and `limit`.
+
+The installer never calls a repair program without an explicit selection. The
 command must be an executable file. It runs with the
 distribution source directory as its working directory and receives one
 argument: the absolute path to a JSON request file.

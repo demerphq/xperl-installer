@@ -27,3 +27,4 @@ t/parallel.t
 t/ported.t
 t/registry.t
 t/repair.t
+t/repair-limits.t
