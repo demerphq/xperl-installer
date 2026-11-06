@@ -163,8 +163,10 @@ sub _expand ($self) {
                 next;
             }
             if ($meta) {
-                $release->{distribution} //= $meta->name;
-                $release->{distribution_version} //= $meta->version;
+                if (!defined $release->{distribution}) {
+                    ($release->{distribution}, $release->{distribution_version}) =
+                        XPerl::Installer::Deps::_distribution_identity($meta, $release->{cpan_path});
+                }
                 my $provides = $meta->provides // {};
                 $node->{declared}{$_} = $provides->{$_}
                     for grep { ($provides->{$_}{file} // '') =~ m{\Alib/} } keys %$provides;

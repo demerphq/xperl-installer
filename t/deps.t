@@ -159,4 +159,64 @@ is($old_meta->effective_prereqs->merged_requirements(
        ->requirements_for_module('Test::More'),
    '0', 'old metadata still provides its requirements');
 
+# Old ExtUtils::MakeMaker releases wrote JSON into META.yml and used the main
+# module's name as the distribution name.
+my $legacy_mirror = File::Spec->catdir($root, 'legacy-mirror');
+my $legacy_releases = File::Spec->catdir($legacy_mirror, qw(authors id E EX EXAMPLE));
+make_path(File::Spec->catdir($legacy_mirror, 'modules'), $legacy_releases);
+sub legacy_release {
+    my ($dist, $module, $meta_yml) = @_;
+    my $tar = Archive::Tar->new;
+    (my $file = $module) =~ s{::}{/}g;
+    $tar->add_data("$dist-1.00/Makefile.PL",
+        "use ExtUtils::MakeMaker;\nWriteMakefile(NAME => '$module', VERSION => '1.00');\n");
+    $tar->add_data("$dist-1.00/lib/$file.pm",
+        "package $module;\nour \$VERSION = '1.00';\n1;\n");
+    $tar->add_data("$dist-1.00/t/basic.t",
+        "use Test::More tests => 1; use_ok('$module');\n");
+    $tar->add_data("$dist-1.00/META.yml", $meta_yml);
+    my $path = File::Spec->catfile($legacy_releases, "$dist-1.00.tar.gz");
+    $tar->write($path, 1);
+    return $path;
+}
+legacy_release('Example-ColonName', 'Example::ColonName', <<'META');
+# http://module-build.sourceforge.net/META-spec.html
+name:         Example::ColonName
+version:      1.00
+distribution_type: module
+META
+my $json_yml = legacy_release('Example-JsonYaml', 'Example::JsonYaml',
+    JSON::PP->new->pretty->encode({
+        name => 'Example-JsonYaml', version => '1.00',
+        abstract => 'JSON in META.yml', author => ['XPerl'], license => 'perl',
+        'meta-spec' => { version => '1.4' },
+        requires => { 'Example::ColonName' => 0 },
+    }));
+my $legacy_index = "File: 02packages.details.txt\n\n"
+    . "Example::ColonName 1.00 E/EX/EXAMPLE/Example-ColonName-1.00.tar.gz\n"
+    . "Example::JsonYaml 1.00 E/EX/EXAMPLE/Example-JsonYaml-1.00.tar.gz\n";
+gzip \$legacy_index => File::Spec->catfile($legacy_mirror, 'modules',
+                                           '02packages.details.txt.gz')
+    or die $GzipError;
+
+my $json_meta = eval { XPerl::Installer::Deps::_metadata($json_yml) };
+is($json_meta && $json_meta->name, 'Example-JsonYaml',
+   'JSON content in META.yml is read as metadata');
+
+for my $jobs (1, 2) {
+    my $legacy_prefix = File::Spec->catdir($root, "legacy-prefix-$jobs");
+    open my $pipe, '-|', $^X, $script, 'install', '--mirror', $legacy_mirror,
+        '--cache', File::Spec->catdir($root, "legacy-cache-$jobs"),
+        '--workdir', File::Spec->catdir($root, "legacy-work-$jobs"),
+        '--prefix', $legacy_prefix, '--registry', $registry, '--jobs', $jobs,
+        'Example::JsonYaml' or die $!;
+    my $output = do { local $/; <$pipe> };
+    my $closed = close $pipe;
+    my $result = eval { JSON::PP->new->decode($output) } // {};
+    ok($closed && ($result->{status} // '') eq 'installed',
+       "legacy metadata releases install ($jobs jobs)");
+    ok(-f File::Spec->catfile($legacy_prefix, qw(lib perl5 Example ColonName.pm)),
+       "the prerequisite named only in JSON META.yml is installed ($jobs jobs)");
+}
+
 done_testing();
