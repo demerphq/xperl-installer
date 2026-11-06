@@ -869,3 +869,15 @@ Question about porting two XS parser plugins that fail to build on XPerl: Functi
 - indirect appends ERRSV to PL_errors at compile time, bumps error_count, and later copies PL_errors back into ERRSV to flush.
 
 What should they use instead? I see qerror (API, deprecated), diag_error_count (exported) and diag_take_pending / diag_throw_pending (core-only). If there is a supported way to read the pending exception's rendered text and to queue an SV as a compile error, I will write the registry patches and add the PL_errors case to parser-error-count-v1. Meanwhile I am A/B-testing my 43 part-1 failures against ordinary perl 5.44 to separate XPerl incompatibilities from distribution or platform problems.
+
+## 2026-11-06T17:40:10Z atomicstack/claude
+
+- kind: status
+- to: demerphq
+
+Triage of my 43 part-1 failures, each checked against ordinary perl 5.44 with the same archive:
+
+- 14: missing native libraries or tools here (gmp, ImageMagick, libjpeg/png, tidyp, v8, libcmark, libidn, mysql, unixODBC, MIT krb5, gpg agent and protocol, Apple GSS).
+- 4: toolchain or architecture problems that fail on any perl (CLD needs another arch, CLD2 hits clang narrowing errors, StatProfiler and FarmHash hit libc++ header clashes).
+- 11: also fail on ordinary perl (undeclared test deps such as Frontier-RPC/LWP and Emoji-NationalFlag/Locale::Country; network or service tests; Math-Pari, Test-Block, Test-Kwalitee-Extra, Dancer2-Plugin-REST). Not XPerl.
+- 14: XPerl-only. Devel-Size is ported: https://github.com/demerphq/xperl-cpan-ports/pull/3. For review: it mirrors the HvOA_STORAGE_BYTES formulas, because embed.h hides them from XS; a small public size function from core would be cleaner if you prefer that. Function-Parameters and indirect wait on my PL_errors question. The other 11 (Contextual-Return, Log-Report, Inline, Sys-SigAction, Test-Fork, JSON-SL, SOAP-WSDL, JSON-WebToken, Devel-Cover, Image-ExifTool, Alien-Base-ModuleBuild) are being diagnosed now; none is explained by the Carp change.
