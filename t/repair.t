@@ -29,11 +29,13 @@ Example::Fixable 1.00 E/EX/EXAMPLE/Example-Fixable-1.00.tar.gz
 Example::Unfixable 1.00 E/EX/EXAMPLE/Example-Unfixable-1.00.tar.gz
 Example::Slow 1.00 E/EX/EXAMPLE/Example-Slow-1.00.tar.gz
 Example::NeedsLibrary 1.00 E/EX/EXAMPLE/Example-NeedsLibrary-1.00.tar.gz
+Example::NeedsPerl 1.00 E/EX/EXAMPLE/Example-NeedsPerl-1.00.tar.gz
+Example::Extra 1.00 E/EX/EXAMPLE/Example-Extra-1.00.tar.gz
 INDEX
 gzip \$index => File::Spec->catfile($modules, '02packages.details.txt.gz')
     or die $GzipError;
 
-for my $name (qw(Fixable Unfixable Slow NeedsLibrary)) {
+for my $name (qw(Fixable Unfixable Slow NeedsLibrary NeedsPerl Extra)) {
     my $dist = "Example-$name-1.00";
     my $tar = Archive::Tar->new;
     $tar->add_data("$dist/Makefile.PL",
@@ -42,6 +44,10 @@ for my $name (qw(Fixable Unfixable Slow NeedsLibrary)) {
         "package Example::$name;\nour \$VERSION = '1.00';\nsub value { 0 }\n1;\n");
     my $test = $name eq 'NeedsLibrary'
         ? "use Test::More tests => 1; ok(-f \$ENV{XPERL_TEST_LIBRARY_READY}, 'native library is available');\n"
+        : $name eq 'NeedsPerl'
+        ? "use Test::More tests => 1; use Example::Extra; pass('Perl prerequisite is available');\n"
+        : $name eq 'Extra'
+        ? "use Test::More tests => 1; pass('CPAN prerequisite builds');\n"
         : "use Test::More tests => 1; use Example::$name; is(Example::${name}::value(), 42);\n";
     $tar->add_data("$dist/t/basic.t", $test);
     $tar->write(File::Spec->catfile($releases, "$dist.tar.gz"), 1);
@@ -72,6 +78,15 @@ if ($request->{module} eq 'Example::NeedsLibrary') {
             message => 'Install the example native library',
             install_hint => 'sudo apt install libexample-dev',
         },
+    });
+    close $out or die $!;
+    exit 0;
+}
+if ($request->{module} eq 'Example::NeedsPerl') {
+    open my $out, '>', $request->{response_path} or die $!;
+    print {$out} JSON::PP->new->encode({
+        schema => 1, status => 'needs_cpan_dependency',
+        module => 'Example::Extra',
     });
     close $out or die $!;
     exit 0;
@@ -149,6 +164,8 @@ open my $request_file, '<', $ENV{XPERL_REPAIR_MARKER} or die $!;
 my $request = JSON::PP->new->decode(do { local $/; <$request_file> });
 is($request->{failed_phase}, 'test', 'agent received failed phase');
 ok(-f $request->{failed_log}, 'agent received persistent test log');
+like($request->{response_path}, qr/\A\Q$request->{source}\E\//,
+     'agent response stays inside its writable source directory');
 ok(-f File::Spec->catfile($prefix, qw(lib perl5 Example Fixable.pm)),
    'repaired module installed in prefix');
 
@@ -214,6 +231,25 @@ my $resumed = JSON::PP->new->decode($resumed_output);
 is($resumed->{status}, 'installed', 'resume installs the distribution');
 is_deeply($resumed->{user_actions}, [],
           'the resolved dependency leaves no pending action');
+
+# An undeclared CPAN prerequisite returns to the build graph. The scheduler
+# installs it and retries the release without asking the user to intervene.
+open $pipe, '-|', $^X, $script, 'install', '--mirror', $mirror,
+    '--cache', $cache, '--prefix', File::Spec->catdir($root, 'perl-prefix'),
+    '--workdir', File::Spec->catdir($root, 'perl-work'),
+    '--repair-command', $agent, '--repair-interval', '0',
+    'Example::NeedsPerl' or die $!;
+my $perl_output = do { local $/; <$pipe> };
+ok(close $pipe, 'undeclared CPAN dependency was installed');
+my $perl_result = JSON::PP->new->decode($perl_output);
+is($perl_result->{status}, 'installed',
+   'the original release succeeds after its prerequisite');
+my ($extra_node) = grep { $_->{cpan_path} =~ /Example-Extra/ }
+                   @{$perl_result->{nodes}};
+is($extra_node->{status}, 'installed',
+   'the missing CPAN release joined the build graph');
+is_deeply($perl_result->{user_actions}, [],
+          'a CPAN dependency needs no user action');
 
 SKIP: {
     skip 'an interactive terminal is needed to test the action shell', 3

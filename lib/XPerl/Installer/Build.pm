@@ -316,8 +316,10 @@ sub install ($self, $release, %options) {
                 }
                 my $request_path = File::Spec->catfile($work,
                                                         "repair-$attempt.json");
-                my $response_path = File::Spec->catfile($work,
-                                                        "repair-$attempt-response.json");
+                # The agent may write only inside the distribution source.
+                # Keep its response there, even though logs live in $work.
+                my $response_path = File::Spec->catfile($source,
+                                                        ".xperl-repair-$attempt-response.json");
                 my $request = {
                     schema => 1,
                     attempt => $attempt,
@@ -368,12 +370,13 @@ sub install ($self, $release, %options) {
                 die "repair failed (exit $repair_status); see $repair_log\n"
                     if $repair_status;
                 if (-f $response_path) {
-                    my $action = _read_repair_action($response_path);
+                    my $response = _read_repair_response($response_path);
                     $record->{phases}[-1]{response} = $response_path;
-                    if ($action) {
-                        $record->{user_action} = $action;
-                        die "user action required: $action->{message}; see $response_path\n";
+                    if ($response->{status} eq 'needs_user_action') {
+                        $record->{user_action} = $response->{action};
+                        die "user action required: $response->{action}{message}; see $response_path\n";
                     }
+                    die { defer => [$response->{dependency}] };
                 }
                 my $after_files = XPerl::Installer::Proposal::files($source);
                 my $manifest = XPerl::Installer::Proposal->manifest_files($source);
@@ -422,13 +425,22 @@ sub install ($self, $release, %options) {
     return $record;
 }
 
-sub _read_repair_action ($path) {
+sub _read_repair_response ($path) {
     open my $input, '<', $path or die "cannot read repair response $path: $!\n";
     my $response = eval { JSON::PP->new->decode(do { local $/; <$input> }) };
     die "invalid repair response $path: $@\n" if $@;
     die "invalid repair response $path: expected schema 1\n"
         unless ref($response) eq 'HASH' && ($response->{schema} // '') eq '1';
-    die "invalid repair response $path: expected needs_user_action\n"
+    if (($response->{status} // '') eq 'needs_cpan_dependency') {
+        my $module = $response->{module} // '';
+        die "invalid repair response $path: expected CPAN module name\n"
+            unless !ref($module)
+                && $module =~ /\A[A-Za-z_][A-Za-z_0-9]*(?:::[A-Za-z_0-9]+)*\z/;
+        return { status => 'needs_cpan_dependency',
+                 dependency => { module => $module,
+                                 range => $response->{range} // '0' } };
+    }
+    die "invalid repair response $path: expected needs_user_action or needs_cpan_dependency\n"
         unless ($response->{status} // '') eq 'needs_user_action';
     my $action = $response->{action};
     die "invalid repair response $path: action needs a kind and message\n"
@@ -441,8 +453,10 @@ sub _read_repair_action ($path) {
         die "invalid repair response $path: install_hint must be a string\n"
             if ref($action->{install_hint});
     }
-    return { map { $_ => $action->{$_} }
-             grep { exists $action->{$_} } qw(kind message install_hint) };
+    return { status => 'needs_user_action', action => {
+        map { $_ => $action->{$_} }
+        grep { exists $action->{$_} } qw(kind message install_hint)
+    } };
 }
 
 # Make compares timestamps, and some make programs (GNU make 3.81, the

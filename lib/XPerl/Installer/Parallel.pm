@@ -457,6 +457,10 @@ sub _repair_worker ($self, $node, $result_path, $budget) {
     if ($record) {
         $outcome = { status => 'installed', receipt => $record->{receipt} };
     }
+    elsif (ref($error) eq 'HASH' && $error->{defer}) {
+        $outcome = { status => 'deferred', modules => $error->{defer},
+                     attempt => $error->{receipt} };
+    }
     else {
         my ($receipt) = "$error" =~ /^ receipt: (\S+)$/m;
         (my $reason = "$error") =~ s/\s*\n receipt: .*//s;
@@ -534,6 +538,10 @@ sub _record ($self, $node, $outcome) {
 }
 
 sub _record_repair ($self, $node, $outcome) {
+    if (($outcome->{status} // '') eq 'deferred') {
+        $self->_record($node, $outcome);
+        return;
+    }
     if (($outcome->{status} // '') eq 'installed') {
         @{$node}{qw(state receipt reason)} =
             ('installed', $outcome->{receipt}, undef);

@@ -253,8 +253,25 @@ configuration,
 build, and tests after each successful repair call, and records every phase
 and request in the receipt. Installation runs only after the tests pass.
 
+When the log identifies a missing CPAN prerequisite that the release did not
+declare, the repair program should leave the source alone and write a JSON
+response at `response_path`:
+
+```json
+{
+  "schema": 1,
+  "status": "needs_cpan_dependency",
+  "module": "Class::Accessor::Lite"
+}
+```
+
+The installer adds the module to its dependency graph, builds it, then retries
+the release. `range` may specify a required version; the default is `0`.
+The response file lives inside the distribution source directory so a repair
+agent restricted to that directory can write it.
+
 When the log identifies a missing host dependency, the repair program should
-leave the source alone and write a JSON response at `response_path`:
+instead write:
 
 ```json
 {
