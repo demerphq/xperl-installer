@@ -30,8 +30,26 @@ sub resolve ($self, $module, %args) {
     $self->_download('modules/02packages.details.txt.gz', $index)
         if $args{refresh} || !-f $index;
 
+    # The index has hundreds of thousands of lines; parse it once and keep
+    # it while the cached file is unchanged, so a run resolving many modules
+    # does not decompress and scan it for every lookup.
+    my $stamp = (stat $index)[9] // '';
+    if ($args{refresh} || !$self->{packages}
+        || ($self->{packages_stamp} // '') ne $stamp) {
+        $self->{packages} = _read_index($index);
+        $self->{packages_stamp} = $stamp;
+    }
+    my $entry = $self->{packages}{$module}
+        or die "CPAN module not found: $module\n";
+    my ($version, $path) = @$entry;
+    _check_release_path($path);
+    return { module => $module, version => $version, cpan_path => $path };
+}
+
+sub _read_index ($index) {
     my $gzip = IO::Uncompress::Gunzip->new($index)
         or die "cannot read CPAN package index $index: $IO::Uncompress::Gunzip::GunzipError\n";
+    my %packages;
     my $in_header = 1;
     while (my $line = <$gzip>) {
         if ($in_header) {
@@ -39,12 +57,10 @@ sub resolve ($self, $module, %args) {
             next;
         }
         my ($name, $version, $path) = split /\s+/, $line;
-        next unless defined $path && $name eq $module;
-        chomp $path;
-        _check_release_path($path);
-        return { module => $module, version => $version, cpan_path => $path };
+        next unless defined $path;
+        $packages{$name} //= [$version, $path];
     }
-    die "CPAN module not found: $module\n";
+    return \%packages;
 }
 
 sub fetch ($self, $module, %args) {
