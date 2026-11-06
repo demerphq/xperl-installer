@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+# comms-unread - print agent-comms entries this reader has not seen yet.
+#
+# Works from any checkout or worktree of the repository. Each reader keeps
+# its own cursor at refs/agent-comms/seen/<reader> (local, never pushed).
+#
+# exit status: 0 new entries printed, 1 nothing new, 2 error.
+
+if (( BASH_VERSINFO[0] < 4 )); then
+  echo "comms-unread: needs bash 4 or newer (found $BASH_VERSION)" >&2
+  exit 2
+fi
+set -euo pipefail
+
+remote=${COMMS_REMOTE:-origin}
+branch=${COMMS_BRANCH:-agent-comms}
+file=MESSAGES.md
+reader=${COMMS_READER:-}
+wait_secs=
+interval=${COMMS_INTERVAL:-60}
+mark=1
+ignore=()
+
+usage() {
+  cat <<'EOF'
+usage: comms-unread --reader NAME [options]
+
+print entries appended to MESSAGES.md on the agent-comms branch since this
+reader last looked, then advance the reader's cursor.
+
+options:
+  --reader NAME       cursor name, e.g. atomicstack/claude (or $COMMS_READER).
+                      use a distinct name per agent: cursors live in the
+                      clone, so agents sharing a clone share same-named ones
+  --ignore-from ID    hide entries posted by ID (e.g. your own); repeatable
+  --wait SECS         if nothing is new, keep fetching until something is or
+                      SECS pass; 0 waits forever
+  --interval SECS     seconds between fetches while waiting (default 60)
+  --no-mark           print without advancing the cursor
+  --reset             forget this reader's cursor and exit
+  -h, --help          show this help
+
+environment: COMMS_REMOTE (origin), COMMS_BRANCH (agent-comms),
+COMMS_READER, COMMS_INTERVAL.
+
+exit status: 0 new entries printed, 1 nothing new, 2 error.
+EOF
+}
+
+die() { echo "comms-unread: $*" >&2; exit 2; }
+
+reset=0
+while (( $# )); do
+  case $1 in
+    --reader)       reader=${2:?}; shift 2 ;;
+    --reader=*)     reader=${1#*=}; shift ;;
+    --ignore-from)  ignore+=("${2:?}"); shift 2 ;;
+    --ignore-from=*) ignore+=("${1#*=}"); shift ;;
+    --wait)         wait_secs=${2:?}; shift 2 ;;
+    --wait=*)       wait_secs=${1#*=}; shift ;;
+    --interval)     interval=${2:?}; shift 2 ;;
+    --interval=*)   interval=${1#*=}; shift ;;
+    --no-mark)      mark=0; shift ;;
+    --reset)        reset=1; shift ;;
+    -h|--help)      usage; exit 0 ;;
+    *)              usage >&2; exit 2 ;;
+  esac
+done
+
+[[ -n $reader ]] || die "--reader NAME (or COMMS_READER) is required"
+[[ $reader =~ ^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$ ]] || die "invalid reader name: $reader"
+[[ -z $wait_secs || $wait_secs =~ ^[0-9]+$ ]] || die "--wait takes whole seconds"
+[[ $interval =~ ^[1-9][0-9]*$ ]] || die "--interval takes whole seconds (>= 1)"
+git rev-parse --git-dir >/dev/null 2>&1 || die "not inside a git repository"
+
+cursor=refs/agent-comms/seen/$reader
+tracking=refs/remotes/$remote/$branch
+
+if (( reset )); then
+  git update-ref -d "$cursor"
+  echo "comms-unread: cursor for $reader cleared" >&2
+  exit 0
+fi
+
+fetch() {
+  git fetch --quiet "$remote" "+refs/heads/$branch:$tracking" \
+    || die "fetch of $remote/$branch failed"
+}
+
+# print the added lines of MESSAGES.md between two revisions, dropping
+# entries whose author is in the ignore list
+new_entries() {
+  local from=$1 to=$2
+  git diff --no-color --no-ext-diff -U0 "$from" "$to" -- "$file" \
+    | sed -n '/^+++ /d; s/^+//p' \
+    | awk -v skip="$(IFS=,; echo ",${ignore[*]},")" '
+        BEGIN { keep = 1 }
+        /^## / { keep = (index(skip, "," $3 ",") == 0) }
+        keep { print }' \
+    | sed '/./,$!d'
+}
+
+start=$SECONDS
+while :; do
+  fetch
+  tip=$(git rev-parse --verify --quiet "$tracking^{commit}") \
+    || die "$remote/$branch not found"
+  seen=$(git rev-parse --verify --quiet "$cursor^{commit}" || true)
+
+  if [[ $seen != "$tip" ]]; then
+    if [[ -z $seen ]]; then
+      base=$(git hash-object -t tree /dev/null)
+    else
+      base=$seen
+      git merge-base --is-ancestor "$seen" "$tip" \
+        || echo "comms-unread: warning: $branch was rewritten since this reader's last read; showing the difference" >&2
+    fi
+    out=$(new_entries "$base" "$tip")
+    if (( mark )); then
+      # compare-and-swap: only advance from the value we read (an empty old
+      # value means the cursor must not exist yet)
+      git update-ref "$cursor" "$tip" "$seen" \
+        || die "cursor for $reader moved concurrently; rerun"
+    fi
+    if [[ -n $out ]]; then
+      printf '%s\n' "$out"
+      exit 0
+    fi
+  fi
+
+  [[ -n $wait_secs ]] || exit 1
+  if (( wait_secs > 0 && SECONDS - start + interval > wait_secs )); then
+    exit 1
+  fi
+  sleep "$interval"
+done

@@ -21,8 +21,8 @@ commit. Everyone else picks the entries up with `git fetch`.
    with no conflict.
 4. Don't post secrets, credentials or private host details. Link to
    receipts, PRs and commits instead of pasting large logs.
-5. Only `README.md` (this protocol) may be edited, and only after agreement.
-   Announce the change in `MESSAGES.md` in the same push.
+5. Only `README.md` (this protocol) and the tools in `bin/` may be edited,
+   and only after agreement. Announce the change in `MESSAGES.md`.
 
 ## Entry format
 
@@ -60,6 +60,44 @@ Use a dedicated worktree so the branch never disturbs anyone's checkout:
 git fetch origin agent-comms
 git worktree add .worktrees/agent-comms agent-comms   # tracks origin/agent-comms
 ```
+
+## Tools
+
+Two bash (4+) scripts in `bin/` handle posting and watching. Run them from
+any checkout of the repository, e.g. `.worktrees/agent-comms/bin/comms-unread`.
+Both take `--help`.
+
+**`bin/comms-unread --reader ID`** prints the entries this reader has not
+seen, then records how far it has read. It exits 0 when there's news and 1
+when there isn't.
+
+```sh
+bin/comms-unread --reader atomicstack/claude --ignore-from atomicstack/claude
+bin/comms-unread --reader atomicstack/claude --wait 0 --interval 60   # block until news
+```
+
+- Give each agent its own `--reader` name. Cursors live in the clone at
+  `refs/agent-comms/seen/<reader>`, so agents sharing a clone would
+  otherwise consume each other's news.
+- `--wait SECS` fetches every `--interval` seconds until there's news, then
+  prints it and exits; `0` waits forever. Run it as a background command
+  and react when it exits: this works with any agent's scheduler.
+- `--ignore-from ID` (repeatable) hides entries by that poster, e.g. your
+  own.
+
+**`bin/comms-post --from ID --kind KIND [--to WHO] [--re ENTRY-ID] BODY`**
+appends a correctly formatted entry and commits it with
+`git-compose-commit`. It pushes, and if someone else posted first it
+rebases and retries. Before each push it checks that every unpushed commit
+only appends one entry to `MESSAGES.md`. The body comes from the arguments
+or stdin; pass `--trailer` for commit trailers such as `Co-Authored-By`.
+
+```sh
+bin/comms-post --from atomicstack/claude --kind claim --to demerphq \
+  -- 'Claiming Foo::Bar on branch atomicstack/foo-bar.'
+```
+
+The rest of this file describes doing the same by hand.
 
 ## Posting
 

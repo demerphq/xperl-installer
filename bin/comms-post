@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+# comms-post - append one entry to MESSAGES.md on agent-comms and push it.
+#
+# Needs a worktree with the agent-comms branch checked out (see README.md).
+# Run it from anywhere inside the repository.
+#
+# exit status: 0 posted, 2 error.
+
+if (( BASH_VERSINFO[0] < 4 )); then
+  echo "comms-post: needs bash 4 or newer (found $BASH_VERSION)" >&2
+  exit 2
+fi
+set -euo pipefail
+
+remote=${COMMS_REMOTE:-origin}
+branch=${COMMS_BRANCH:-agent-comms}
+file=MESSAGES.md
+kinds=(status claim release question answer handoff blocker note)
+from=${COMMS_FROM:-}
+kind=
+to=all
+re=
+subject=
+trailers=()
+attempts=5
+
+usage() {
+  cat <<'EOF'
+usage: comms-post --from HUMAN/AGENT --kind KIND [options] [--] [BODY...]
+
+append one entry to MESSAGES.md on the agent-comms branch, commit it with
+git-compose-commit and push it, rebasing and retrying if someone else
+posted first. the body comes from the arguments, or from stdin when there
+are none (or when it is "-").
+
+options:
+  --from ID         poster, e.g. atomicstack/claude (or $COMMS_FROM)
+  --kind KIND       status, claim, release, question, answer, handoff,
+                    blocker or note
+  --to WHO          all (default) or a comma-separated list of recipients
+  --re ENTRY-ID     id of the entry this replies to or corrects,
+                    e.g. "2026-11-06T15:33:36Z atomicstack/claude"
+  --subject TEXT    commit summary (default: first line of the body)
+  --trailer TEXT    commit trailer, e.g. "Co-Authored-By: ..."; repeatable
+  -h, --help        show this help
+
+environment: COMMS_REMOTE (origin), COMMS_BRANCH (agent-comms), COMMS_FROM.
+EOF
+}
+
+die() { echo "comms-post: $*" >&2; exit 2; }
+
+while (( $# )); do
+  case $1 in
+    --from)      from=${2:?}; shift 2 ;;
+    --from=*)    from=${1#*=}; shift ;;
+    --kind)      kind=${2:?}; shift 2 ;;
+    --kind=*)    kind=${1#*=}; shift ;;
+    --to)        to=${2:?}; shift 2 ;;
+    --to=*)      to=${1#*=}; shift ;;
+    --re)        re=${2:?}; shift 2 ;;
+    --re=*)      re=${1#*=}; shift ;;
+    --subject)   subject=${2:?}; shift 2 ;;
+    --subject=*) subject=${1#*=}; shift ;;
+    --trailer)   trailers+=(--trailer "${2:?}"); shift 2 ;;
+    --trailer=*) trailers+=(--trailer "${1#*=}"); shift ;;
+    -h|--help)   usage; exit 0 ;;
+    --)          shift; break ;;
+    -?*)         usage >&2; exit 2 ;;
+    *)           break ;;
+  esac
+done
+
+# ---- validate the entry ----------------------------------------------------
+
+[[ -n $from ]] || die "--from HUMAN/AGENT (or COMMS_FROM) is required"
+[[ $from =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || die "--from must look like human/agent: $from"
+[[ " ${kinds[*]} " == *" $kind "* ]] || die "--kind must be one of: ${kinds[*]}"
+[[ $to =~ ^[A-Za-z0-9._/,-]+$ ]] || die "--to must be all or a comma-separated list of names"
+[[ -z $re || $re =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\ [A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] \
+  || die "--re must be an entry id like \"2026-11-06T15:33:36Z human/agent\""
+
+if (( $# == 0 )) || [[ $* == - ]]; then
+  [[ -t 0 ]] && echo "comms-post: reading body from stdin (end with ctrl-d)" >&2
+  body=$(cat)
+else
+  body="$*"
+fi
+body=$(printf '%s\n' "$body" | sed -e 's/[[:space:]]*$//' | sed -e '/./,$!d')
+body=${body%$'\n'}
+[[ -n ${body//[[:space:]]/} ]] || die "the body is empty"
+if grep -qE '^#{1,2}( |$)' <<<"$body"; then
+  die "body lines must not start with '# ' or '## ' (they delimit entries); use ### or lower"
+fi
+
+if [[ -z $subject ]]; then
+  subject=$(head -n1 <<<"$body")
+fi
+subject="$kind: $subject"
+(( ${#subject} <= 72 )) || subject="${subject:0:69}..."
+
+command -v git-compose-commit >/dev/null \
+  || die "git-compose-commit not found; AGENTS.md requires it for commits"
+
+# ---- find the agent-comms worktree -----------------------------------------
+
+git rev-parse --git-dir >/dev/null 2>&1 || die "not inside a git repository"
+wt=$(git worktree list --porcelain | awk -v want="branch refs/heads/$branch" '
+  /^worktree / { path = substr($0, 10) }
+  $0 == want   { print path; exit }')
+[[ -n $wt ]] || die "no worktree has $branch checked out; run:
+  git fetch $remote $branch && git worktree add .worktrees/$branch $branch"
+g() { git -C "$wt" "$@"; }
+
+[[ -z $(g status --porcelain --untracked-files=no) ]] || die "the $branch worktree at $wt has uncommitted changes"
+tracking=refs/remotes/$remote/$branch
+
+sync_with_remote() {
+  g fetch --quiet "$remote" "+refs/heads/$branch:$tracking" || die "fetch failed"
+  if ! g rebase --quiet "$tracking" >/dev/null; then
+    g rebase --abort || true
+    die "rebase onto $remote/$branch failed in $wt; resolve by hand"
+  fi
+}
+
+# every unpushed commit must append exactly one entry and touch nothing else
+check_unpushed() {
+  local c stat heads
+  for c in $(g rev-list "$tracking..HEAD"); do
+    stat=$(g diff-tree --no-commit-id --numstat -r "$c")
+    [[ $stat =~ ^[0-9]+$'\t'0$'\t'"$file"$ ]] \
+      || die "commit $c does more than append to $file:
+$stat"
+    heads=$(g diff -U0 "$c^" "$c" -- "$file" | grep -c '^+## ' || true)
+    (( heads == 1 )) || die "commit $c adds $heads entries; exactly one is allowed"
+  done
+}
+
+# a union merge drops the blank line that two concurrent entries both start
+# with, leaving our heading straight after the other entry's last line. put
+# it back; that only adds a line, so the log stays append-only.
+restore_separator() {
+  local f="$wt/$file" n prev
+  n=$(grep -nxF -- "$heading" "$f" | tail -n1 | cut -d: -f1)
+  [[ -n $n ]] && (( n > 1 )) || return 0
+  prev=$(sed -n "$(( n - 1 ))p" "$f")
+  [[ -n $prev ]] || return 0
+  awk -v n="$n" 'NR == n { print "" } { print }' "$f" >"$f.tmp" && mv "$f.tmp" "$f"
+  g add -- "$file"
+  g commit --quiet --amend --no-edit --no-verify
+}
+
+# ---- append, commit, push ---------------------------------------------------
+
+sync_with_remote
+
+ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+entry_file="$wt/$file"
+[[ -f $entry_file ]] || die "$file is missing from $wt"
+heading="## $ts $from"
+{
+  # make sure the file ends in a newline, then leave one blank line
+  [[ -z $(tail -c1 "$entry_file") ]] || printf '\n'
+  printf '\n%s\n\n- kind: %s\n- to: %s\n' "$heading" "$kind" "$to"
+  [[ -z $re ]] || printf -- '- re: %s\n' "$re"
+  printf '\n%s\n' "$body"
+} >>"$entry_file"
+
+g add -- "$file"
+(
+  cd "$wt"
+  git-compose-commit --subject "$subject" \
+    --text "Append a $kind entry from $from to $file." \
+    "${trailers[@]}" >/dev/null
+) || { g reset --quiet --hard "HEAD"; die "commit failed; entry discarded"; }
+
+for (( i = 1; i <= attempts; i++ )); do
+  check_unpushed
+  if g push --quiet "$remote" "HEAD:refs/heads/$branch" 2>/dev/null; then
+    g fetch --quiet "$remote" "+refs/heads/$branch:$tracking" || true
+    echo "$ts $from"
+    exit 0
+  fi
+  (( i < attempts )) || break
+  echo "comms-post: push rejected (attempt $i/$attempts); rebasing and retrying" >&2
+  sleep $(( RANDOM % 3 + 1 ))
+  sync_with_remote
+  restore_separator
+done
+die "push failed after $attempts attempts; the entry is committed locally in $wt"
