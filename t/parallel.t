@@ -323,7 +323,8 @@ my $events = File::Spec->catfile($root, 'repair-events');
 local $ENV{XPERL_REPAIR_EVENTS} = $events;
 ($status, $result, $prefix, $work) = install(
     '--jobs', 4, '--repair-jobs', 2, '--repair-attempts', 1,
-    '--repair-limit', 2, '--repair-command', $agent,
+    '--repair-limit', 2, '--repair-interval', 0,
+    '--repair-command', $agent,
     qw(Example::Bad Example::BadTwo Example::NeedsBad
        Example::Fine Example::SlowRepair));
 is($status, 0, 'repairs unblock the batch');
@@ -351,7 +352,7 @@ ok($slow_test->{started} < $times{Bad}{end}
 # failures remain visible after the budget is spent.
 ($status, $result) = install(
     '--jobs', 4, '--repair-attempts', 1, '--repair-limit', 1,
-    '--repair-command', $agent,
+    '--repair-interval', 0, '--repair-command', $agent,
     qw(Example::Bad Example::BadTwo));
 isnt($status, 0, 'the batch reports an unrepaired release');
 my @limited = map { request($result, "Example::$_") } qw(Bad BadTwo);

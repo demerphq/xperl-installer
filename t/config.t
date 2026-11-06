@@ -23,6 +23,7 @@ cache = "/tmp/xperl-cache"
 command = "bin/claude-wrapper"
 attempts = 2
 timeout = 600
+interval = 10
 TOML
 close $output or die $!;
 
@@ -33,6 +34,7 @@ is($config->{agents}{claude}{command},
    'relative repair command is resolved from config directory');
 is($config->{agents}{claude}{attempts}, 2, 'attempt limit is loaded');
 is($config->{agents}{claude}{timeout}, 600, 'timeout is loaded');
+is($config->{agents}{claude}{interval}, 10, 'call interval is loaded');
 
 open $output, '>:raw', $path or die $!;
 print {$output} "schema = 1\n[install]\npreifx = '/opt/xperl'\n";

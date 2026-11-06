@@ -25,6 +25,7 @@ Usage: xperl resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Na
                      [--from FILE]
                      [--agent NAME | --repair-command PATH]
                      [--repair-attempts N] [--repair-timeout SECONDS]
+                     [--repair-interval SECONDS]
                      [--repair-limit N] [--repair-jobs K]
                      [--jobs K] [--phase-timeout SECONDS]
                      [--native-prefix DIR]... [--no-native-prefix]
@@ -38,6 +39,7 @@ Usage: xperl resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Na
                      [--only AUTHOR/Dist]... [--exclude AUTHOR/Dist]...
                      [--agent NAME | --repair-command PATH]
                      [--repair-jobs K]
+                     [--repair-interval SECONDS]
                      [--mirror URL|DIR] [--cache DIR] [--workdir DIR]
 
 This command must run with an installed XPerl. Installation supports
@@ -46,6 +48,7 @@ install accepts several modules, or a file of module names (one per line;
 blank lines and # comments are ignored), and continues past failures.
 Failed releases enter the repair queue while independent builds continue.
 --repair-jobs K allows up to K repair commands to run at once.
+--repair-interval SECONDS spaces repair starts across installer processes.
 install-ported rebuilds every release recorded as successful in the ports
 registry and writes report.json and summary.txt under WORKDIR/install-ported.
 --phase-timeout SECONDS stops a configure, build, test or install phase, and
@@ -64,6 +67,7 @@ USAGE
 my $action = shift @ARGV // 'help';
 my ($config_path, $agent, $mirror, $cache, $workdir, $refresh, $prefix,
     $registry, $repair_command, $repair_attempts, $repair_timeout, $repair_limit,
+    $repair_interval,
     $dry_run, $as_json, $resume, @only, @exclude, $jobs, $from, $phase_timeout,
     @native_prefixes, $no_native_prefix, $repair_jobs,
     $layout);
@@ -80,6 +84,7 @@ GetOptionsFromArray(
     'repair-command=s' => \$repair_command,
     'repair-attempts=i' => \$repair_attempts,
     'repair-limit=i' => \$repair_limit,
+    'repair-interval=i' => \$repair_interval,
     'repair-jobs=i' => \$repair_jobs,
     'repair-timeout=i' => \$repair_timeout,
     'dry-run' => \$dry_run,
@@ -125,6 +130,7 @@ if (defined $agent) {
     $repair_command = $profile->{command};
     $repair_attempts //= $profile->{attempts};
     $repair_limit //= $profile->{limit};
+    $repair_interval //= $profile->{interval};
     $repair_timeout //= $profile->{timeout};
 }
 
@@ -156,9 +162,8 @@ sub builder ($ports) {
         (defined $ports ? (registry => $ports) : ()),
         (defined $repair_command ? (repair_command => $repair_command) : ()),
         (defined $repair_attempts ? (repair_attempts => $repair_attempts) : ()),
-        (defined $repair_limit ? (repair_limit => $repair_limit)
-         : defined $repair_command
-             ? (repair_limit => ($repair_attempts // 2) * $repair_jobs) : ()),
+        (defined $repair_limit ? (repair_limit => $repair_limit) : ()),
+        (defined $repair_interval ? (repair_interval => $repair_interval) : ()),
         (defined $repair_timeout ? (repair_timeout => $repair_timeout) : ()),
         (defined $phase_timeout ? (phase_timeout => $phase_timeout) : ()),
         native_prefixes => [@native_prefixes],

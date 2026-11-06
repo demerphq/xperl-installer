@@ -66,7 +66,7 @@ sub load ($class, $path) {
         my $profile = $agents->{$name};
         die "config agents.$name must be a table\n"
             unless ref($profile) eq 'HASH';
-        _keys($profile, [qw(command attempts timeout limit)], "agents.$name");
+        _keys($profile, [qw(command attempts timeout limit interval)], "agents.$name");
         my $command = $profile->{command};
         die "config agents.$name.command must be a nonempty string\n"
             if !defined($command) || ref($command) || !length($command);
@@ -83,6 +83,10 @@ sub load ($class, $path) {
         if (exists $profile->{timeout}) {
             die "config agents.$name.timeout must be a positive integer\n"
                 unless $profile->{timeout} =~ /\A[1-9]\d*\z/;
+        }
+        if (exists $profile->{interval}) {
+            die "config agents.$name.interval must be a non-negative integer\n"
+                unless $profile->{interval} =~ /\A\d+\z/;
         }
     }
 

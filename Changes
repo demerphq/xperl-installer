@@ -1,4 +1,8 @@
 Unreleased
+    AI repairs allow four attempts per release by default and start at least
+    ten seconds apart across installer processes. --repair-limit is an
+    optional run-wide cap, not a default that stops the batch after one
+    release. --repair-interval controls the spacing.
     Stop repair attempts when an agent leaves the source unchanged. Receipts
     mark the unchanged attempt so missing external prerequisites do not spend
     the remaining repair budget on identical retries.
@@ -24,9 +28,7 @@ Unreleased
     failures, reporting the outcome of each requested module.
     install-ported accepts --jobs K and builds the selected releases with
     the parallel scheduler; progress lines mark resumed entries.
-    Repair calls are capped per run with --repair-limit (default: one
-    release worth of attempts) and never run concurrently, so a repair
-    agent cannot be started more often than the user allowed.
+    Repair calls can be capped per run with --repair-limit when requested.
     install accepts --jobs K (or install.jobs in the config) to build
     independent releases in parallel. Receipts record phase start and finish
     times.

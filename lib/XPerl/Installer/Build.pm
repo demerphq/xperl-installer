@@ -32,7 +32,7 @@ sub new ($class, %args) {
             unless defined $repair_command && -f $repair_command
                 && -x $repair_command;
     }
-    my $repair_attempts = $args{repair_attempts} // ($repair_command ? 2 : 0);
+    my $repair_attempts = $args{repair_attempts} // ($repair_command ? 4 : 0);
     die "repair attempts require a repair command\n"
         if $repair_attempts && !$repair_command;
     die "repair attempts must be a non-negative integer\n"
@@ -40,18 +40,20 @@ sub new ($class, %args) {
     my $repair_timeout = $args{repair_timeout} // 600;
     die "repair timeout must be a positive integer\n"
         unless $repair_timeout =~ /\A[1-9]\d*\z/;
+    my $repair_interval = $args{repair_interval} // 10;
+    die "repair interval must be a non-negative integer\n"
+        unless $repair_interval =~ /\A\d+\z/;
     # A configure, build or test phase that runs longer than this is stopped
     # with every process it started, so one hung test cannot stall a run.
     # 0 disables the limit.
     my $phase_timeout = $args{phase_timeout} // 3600;
     die "phase timeout must be a non-negative integer\n"
         unless $phase_timeout =~ /\A\d+\z/;
-    # A repair command may start a paid AI agent. The sequential builder
-    # tracks calls for its run. The parallel scheduler reserves calls across
-    # its workers before starting them.
-    my $repair_limit = $args{repair_limit} // $repair_attempts;
+    # The per-release attempt count and call timeout always bound a repair.
+    # A run-wide call cap is available when the caller explicitly requests it.
+    my $repair_limit = $args{repair_limit};
     die "repair limit must be a non-negative integer\n"
-        unless $repair_limit =~ /\A\d+\z/;
+        if defined($repair_limit) && $repair_limit !~ /\A\d+\z/;
     my $native_prefixes = $args{native_prefixes} // [];
     die "native prefixes must be a list of directories\n"
         unless ref $native_prefixes eq 'ARRAY';
@@ -92,6 +94,9 @@ sub new ($class, %args) {
         repair_timeout => $repair_timeout,
         phase_timeout => $phase_timeout,
         repair_limit => $repair_limit,
+        repair_interval => $repair_interval,
+        repair_rate_file => $args{repair_rate_file} // File::Spec->catfile(
+            File::Spec->tmpdir, "xperl-repair-$<.rate"),
         repair_calls => 0,
         # One repair worker per process uses this per-user lock. Parallel
         # runs with more than one repair worker opt out explicitly.
@@ -301,7 +306,8 @@ sub install ($self, $release, %options) {
                 die $failure
                     if $phase eq 'install' || !$self->{repair_command}
                         || $attempt > $self->{repair_attempts};
-                if ($self->{repair_calls} >= $self->{repair_limit}) {
+                if (defined $self->{repair_limit}
+                    && $self->{repair_calls} >= $self->{repair_limit}) {
                     $record->{repair_skipped} =
                         "repair limit of $self->{repair_limit} calls reached";
                     chomp $failure;
@@ -343,6 +349,8 @@ sub install ($self, $release, %options) {
                 ++$self->{repair_calls};
                 my $repair_lock = $self->{repair_lock}
                     ? _lock($self->{repair_lock}) : undef;
+                _space_repair_calls($self->{repair_rate_file},
+                                    $self->{repair_interval});
                 my ($repair_status, $repair_timed_out) = $self->_run($source, $repair_log,
                     { timeout => $self->{repair_timeout} }, @repair_command);
                 undef $repair_lock;
@@ -432,6 +440,29 @@ sub _lock ($path) {
     open my $handle, '>>', $path or die "cannot open install lock $path: $!\n";
     flock($handle, LOCK_EX) or die "cannot lock $path: $!\n";
     return $handle;    # released when the handle is closed
+}
+
+# A short agent call should not let the next worker start immediately. The
+# timestamp is shared by installer processes owned by this user; the lock is
+# held only while selecting and recording the next start time.
+sub _space_repair_calls ($path, $interval) {
+    return unless $interval;
+
+    open my $gate, '+>>', $path
+        or die "cannot open repair rate file $path: $!\n";
+    flock($gate, LOCK_EX)
+        or die "cannot lock repair rate file $path: $!\n";
+    seek $gate, 0, 0 or die "cannot read repair rate file $path: $!\n";
+    my $previous = <$gate>;
+    if (defined $previous && $previous =~ /\A\d+(?:\.\d+)?\s*\z/) {
+        my $wait = $previous + $interval - time;
+        Time::HiRes::sleep($wait) if $wait > 0;
+    }
+
+    truncate($gate, 0) or die "cannot reset repair rate file $path: $!\n";
+    printf {$gate} "%.6f\n", time
+        or die "cannot write repair rate file $path: $!\n";
+    close $gate or die "cannot close repair rate file $path: $!\n";
 }
 
 sub _unpack ($archive, $work) {

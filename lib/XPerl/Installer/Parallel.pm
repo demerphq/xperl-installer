@@ -298,19 +298,20 @@ sub _start_repairs ($self, $running, $repair) {
                   values %{$self->{nodes}}) {
         last if $active >= $self->{repair_jobs};
 
-        my $remaining = $self->{builder}{repair_limit}
-            - $repair->{calls} - $repair->{reserved};
-        if ($remaining <= 0) {
-            # An active repair may return unused calls. Wait for it before
-            # treating another failure as beyond the run's limit.
-            last if $active;
-            $self->_fail($node, "$node->{reason}; repair limit reached",
-                         $node->{receipt});
-            next;
+        my $budget = $self->{builder}{repair_attempts};
+        if (defined $self->{builder}{repair_limit}) {
+            my $remaining = $self->{builder}{repair_limit}
+                - $repair->{calls} - $repair->{reserved};
+            if ($remaining <= 0) {
+                # An active repair may return unused calls. Wait for it
+                # before treating another failure as beyond the run's cap.
+                last if $active;
+                $self->_fail($node, "$node->{reason}; repair limit reached",
+                             $node->{receipt});
+                next;
+            }
+            $budget = $remaining if $remaining < $budget;
         }
-
-        my $budget = $remaining < $self->{builder}{repair_attempts}
-            ? $remaining : $self->{builder}{repair_attempts};
         $node->{state} = 'repairing';
         my ($pid, $worker) = $self->_start_worker('repair', $node, $budget);
         $running->{$pid} = $worker;
@@ -598,8 +599,8 @@ failure blocks only its dependents.
 =head1 WORKER LIMITS
 
 C<jobs> controls the number of build workers. C<repair_jobs> controls the
-number of repair workers. The two limits are independent. Repair calls also
-share the builder's C<repair_limit> for the whole run. The scheduler reserves
-each worker's possible calls and returns unused calls when it finishes.
+number of repair workers. The two limits are independent. An explicit
+C<repair_limit> caps calls for the whole run. The scheduler reserves each
+worker's possible calls and returns unused calls when it finishes.
 
 =cut

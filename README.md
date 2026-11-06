@@ -83,13 +83,15 @@ cache = "/home/me/.xperl/cache"
 
 [agents.codex]
 command = "/home/me/bin/xperl-codex-repair"
-attempts = 2
+attempts = 4
 timeout = 600
+interval = 10
 
 [agents.claude]
 command = "/home/me/bin/xperl-claude-repair"
-attempts = 2
+attempts = 4
 timeout = 600
+interval = 10
 ```
 
 For example, `xperl install --config config.toml --agent claude
@@ -220,18 +222,20 @@ a port.
 
 `--repair-command PATH` or `--agent NAME` enables an external repair program after a failed
 configure, build, or test phase. `--repair-attempts N` limits repair calls
-for one release; the default is two. `--repair-timeout SECONDS` limits each
-call; the default is 600 seconds.
+for one release; the default is four. `--repair-timeout SECONDS` limits each
+call to 600 seconds by default. An unchanged source edit stops retries early.
+`--repair-interval SECONDS` spaces agent call starts across installer processes
+owned by the same user; the default is ten seconds.
 
-A repair program may start a paid AI agent, so its use is bounded for the
-whole run as well. `--repair-limit N` caps agent calls across all releases.
-By default it allows `--repair-attempts` calls per repair worker. The
-scheduler reserves each repair's possible calls before starting it and
-returns unused calls when it finishes. Later failures are reported when the
-budget is exhausted. With the default one repair worker, a per-user lock
+A repair program may start a paid AI agent. `--repair-limit N` optionally
+caps calls across the whole run. When set, the scheduler reserves each
+repair's possible calls and returns unused calls when it finishes. Later
+failures are reported when that budget is exhausted. Without it, every
+failed release can use its own attempt allowance. With the default one
+repair worker, a per-user lock
 also serializes agents started by separate installer processes. Selecting
 more than one repair worker permits concurrent agents. A selected agent
-profile can supply `attempts`, `timeout`, and `limit`.
+profile can supply `attempts`, `timeout`, `interval`, and `limit`.
 
 The installer never calls a repair program without an explicit selection. The
 command must be an executable file. It runs with the

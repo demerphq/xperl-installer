@@ -12,8 +12,8 @@ use IO::Compress::Gzip qw(gzip $GzipError);
 use JSON::PP;
 use Test::More;
 
-# A repair command may start a paid AI agent. The installer must never run
-# two at once, and must not make more calls in one run than the user allowed.
+# A repair command may start a paid AI agent. A caller can cap the whole run,
+# while the normal case gives every failed release its own repair allowance.
 
 my $root = abs_path(tempdir(CLEANUP => 1,
                             DIR => $ENV{XPERL_TEST_TMPDIR} // File::Spec->tmpdir));
@@ -96,7 +96,8 @@ sub install ($module, @extra) {
     open my $pipe, '-|', $^X, $script, 'install', '--mirror', $mirror,
         '--cache', $cache, '--prefix', File::Spec->catdir($root, "prefix-$run"),
         '--workdir', File::Spec->catdir($root, "work-$run"),
-        '--repair-command', $agent, '--repair-attempts', 1, @extra, $module
+        '--repair-command', $agent, '--repair-attempts', 1,
+        '--repair-interval', 0, @extra, $module
         or die $!;
     open STDERR, '>&', $saved or die $!;
     my $output = do { local $/; <$pipe> };
@@ -110,16 +111,16 @@ sub install ($module, @extra) {
     return ($status, \@calls, $output);
 }
 
-# Without a limit, one run makes no more calls than one release may use.
+# Without a run-wide cap, both releases can use their own attempt allowance.
 my ($status, $calls, $output) = install('Example::Stem');
-isnt($status, 0, 'the run fails once the default repair budget is spent');
-is(scalar @$calls, 1, 'the default budget is one release worth of attempts');
-like($output, qr/repair limit/, 'the failure says the repair limit was reached');
+is($status, 0, 'the run repairs both releases by default');
+is(scalar @$calls, 2, 'each release receives its own repair call');
 
-# An explicit limit allows more calls in one run.
-($status, $calls) = install('Example::Stem', '--repair-limit', 2);
-is($status, 0, 'a higher explicit limit lets both releases be repaired');
-is(scalar @$calls, 2, 'the agent ran once per repaired release');
+# An explicit run-wide cap still stops further calls.
+($status, $calls, $output) = install('Example::Stem', '--repair-limit', 1);
+isnt($status, 0, 'an explicit cap stops the second repair');
+is(scalar @$calls, 1, 'the cap permits one agent call');
+like($output, qr/repair limit/, 'the failure names the run-wide cap');
 
 # Parallel builds never run two repairs at the same time.
 ($status, $calls) = install('Example::Both', '--jobs', 3, '--repair-limit', 3);
@@ -128,5 +129,12 @@ is(scalar @$calls, 3, 'every broken release was repaired once');
 my @sorted = sort { $a->[1] <=> $b->[1] } @$calls;
 my $overlap = grep { $sorted[$_][1] < $sorted[$_ - 1][2] } 1 .. $#sorted;
 is($overlap, 0, 'repair calls never overlap');
+
+# A minimum interval spaces starts even when the agent finishes quickly.
+($status, $calls) = install('Example::Stem', '--repair-interval', 2);
+is($status, 0, 'a spaced run still repairs both releases');
+@sorted = sort { $a->[1] <=> $b->[1] } @$calls;
+cmp_ok($sorted[1][1] - $sorted[0][1], '>=', 1.9,
+       'agent calls begin at least two seconds apart');
 
 done_testing();

@@ -90,7 +90,8 @@ open my $config_file, '>:raw', $config_path or die $!;
 print {$config_file} TOML::Tiny->new->encode({
     schema => 1,
     install => { mirror => $mirror, cache => $cache, prefix => $prefix },
-    agents => { fixture => { command => $agent, attempts => 1 } },
+    agents => { fixture => { command => $agent, attempts => 1,
+                             interval => 0 } },
 });
 close $config_file or die $!;
 
@@ -127,7 +128,8 @@ ok(-f File::Spec->catfile($prefix, qw(lib perl5 Example Fixable.pm)),
 
 open $pipe, '-|', $^X, $script, 'install', '--mirror', $mirror,
     '--cache', $cache, '--prefix', $prefix, '--repair-command', $agent,
-    '--repair-attempts', '2', 'Example::Unfixable' or die $!;
+    '--repair-attempts', '2', '--repair-interval', '0',
+    'Example::Unfixable' or die $!;
 my $failure = do { local $/; <$pipe> };
 ok(!close $pipe, 'repair stops when the agent leaves source unchanged');
 like($failure, qr/repair made no source changes/,
@@ -150,7 +152,8 @@ ok(!-f File::Spec->catfile($prefix, qw(lib perl5 Example Unfixable.pm)),
 
 open $pipe, '-|', $^X, $script, 'install', '--mirror', $mirror,
     '--cache', $cache, '--prefix', $prefix, '--repair-command', $agent,
-    '--repair-attempts', '1', '--repair-timeout', '1', 'Example::Slow'
+    '--repair-attempts', '1', '--repair-timeout', '1',
+    '--repair-interval', '0', 'Example::Slow'
     or die $!;
 my $timeout = do { local $/; <$pipe> };
 ok(!close $pipe, 'slow repair command times out');
