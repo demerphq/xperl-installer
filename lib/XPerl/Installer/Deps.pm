@@ -129,8 +129,10 @@ sub _build ($self, $release, $module, %options) {
         my $meta = eval { _metadata($release->{archive}) };
         die "invalid CPAN metadata for $module ($path): $@" if $@;
         if ($meta) {
-            $release->{distribution} //= $meta->name;
-            $release->{distribution_version} //= $meta->version;
+            if (!defined $release->{distribution}) {
+                ($release->{distribution}, $release->{distribution_version}) =
+                    _distribution_identity($meta, $path);
+            }
             my $structure = $meta->as_struct;
             $release->{x_use_unsafe_inc} = $structure->{x_use_unsafe_inc} ? 1 : 0
                 if exists $structure->{x_use_unsafe_inc};
@@ -216,12 +218,25 @@ sub _metadata ($archive) {
         my ($file) = grep { $_->full_path =~ m{\A[^/]+/\Q$suffix\E\z} }
             @files;
         next unless $file;
-        my $data = $suffix eq 'META.json'
-            ? Parse::CPAN::Meta->load_json_string($file->get_content)
-            : Parse::CPAN::Meta->load_yaml_string($file->get_content);
+        my $content = $file->get_content;
+        # Old ExtUtils::MakeMaker releases wrote JSON into META.yml.
+        my $data = $suffix eq 'META.json' || $content =~ /\A\s*\{/
+            ? Parse::CPAN::Meta->load_json_string($content)
+            : Parse::CPAN::Meta->load_yaml_string($content);
         return CPAN::Meta->new($data, { lazy_validation => 1 });
     }
     return;
+}
+
+# The distribution name and version used for registry lookups. Old releases
+# give the main module's name (Foo::Bar) in their metadata; the archive
+# name (Foo-Bar-1.0) is used instead whenever the metadata name is not a
+# valid distribution name, which matches how the registry records it.
+sub _distribution_identity ($meta, $path) {
+    my $name = $meta->name // '';
+    return ($name, $meta->version)
+        if $name =~ /\A[A-Za-z0-9][A-Za-z0-9_.-]*\z/;
+    return _identity_from_path($path);
 }
 
 sub _identity_from_path ($path) {
