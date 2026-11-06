@@ -31,4 +31,5 @@ t/ported.t
 t/registry.t
 t/repair.t
 t/repair-limits.t
+t/site-layout.t
 t/timeout.t

@@ -90,6 +90,18 @@ like($ok ? '' : $@, qr/install\.native_prefixes must be a list/,
      'a single native prefix string is rejected');
 
 open $output, '>:raw', $path or die $!;
+print {$output} "schema = 1\n[install]\nlayout = 'site'\n";
+close $output or die $!;
+is(XPerl::Installer::Config->load($path)->{install}{layout}, 'site',
+   'install layout is loaded');
+open $output, '>:raw', $path or die $!;
+print {$output} "schema = 1\n[install]\nlayout = 'flat'\n";
+close $output or die $!;
+$ok = eval { XPerl::Installer::Config->load($path); 1 };
+like($ok ? '' : $@, qr/install\.layout must be auto, site or install_base/,
+     'an unknown install layout is rejected');
+
+open $output, '>:raw', $path or die $!;
 print {$output} "schema = 1\n[agents.claude]\ncommand = ''\n";
 close $output or die $!;
 $ok = eval { XPerl::Installer::Config->load($path); 1 };

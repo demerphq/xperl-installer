@@ -538,12 +538,11 @@ sub _record_repair ($self, $node, $outcome) {
 # ---------------------------------------------------------- availability
 
 sub _available ($self, $module, $range) {
-    my $prefix = $self->{builder}{prefix};
-    my $site = File::Spec->catdir($prefix, 'lib', 'perl5');
-    my @inc = ($site, File::Spec->catdir($site, $Config{archname}), @INC);
+    my ($site, $arch) = $self->{builder}->library_dirs;
+    my @inc = ($site, $arch, @INC);
     my $metadata = Module::Metadata->new_from_module($module, inc => \@inc);
     my $version = $metadata ? $metadata->version // '0'
-        : $self->_declared_version($module, $site);
+        : $self->_declared_version($module, $site, $arch);
     return 0 unless defined $version;
     return _accepts($module, $range, $version);
 }
@@ -552,7 +551,7 @@ sub _available ($self, $module, $range) {
 # file of its own, so Module::Metadata cannot find it. It counts as
 # installed once the release declaring it is installed and the declaring
 # file is in the prefix.
-sub _declared_version ($self, $module, $site) {
+sub _declared_version ($self, $module, $site, $arch) {
     my $path = $self->{modules}{$module} // return;
     my $node = $self->{nodes}{$path};
     return unless $node && $node->{state} eq 'installed';
@@ -560,7 +559,7 @@ sub _declared_version ($self, $module, $site) {
     my ($file) = $entry->{file} =~ m{\Alib/(.+)\z} or return;
     my @parts = split m{/}, $file;
     return unless -f File::Spec->catfile($site, @parts)
-        || -f File::Spec->catfile($site, $Config{archname}, @parts);
+        || -f File::Spec->catfile($arch, @parts);
     return $entry->{version} // '0';
 }
 

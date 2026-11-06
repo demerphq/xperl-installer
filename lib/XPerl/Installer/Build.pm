@@ -55,10 +55,35 @@ sub new ($class, %args) {
     my $native_prefixes = $args{native_prefixes} // [];
     die "native prefixes must be a list of directories\n"
         unless ref $native_prefixes eq 'ARRAY';
+    my $layout = $args{layout} // 'auto';
+    die "layout must be auto, site or install_base\n"
+        unless $layout =~ /\A(?:auto|site|install_base)\z/;
     make_path($args{prefix}, $args{workdir});
+    my $prefix = abs_path($args{prefix});
+    # Installing into the running interpreter's own prefix puts modules where
+    # its @INC already looks, so they need no PERL5LIB. Any other prefix is a
+    # separate library tree laid out with INSTALL_BASE.
+    if ($layout eq 'auto') {
+        my $own = $args{interpreter_prefix}
+            // ($Config{siteprefixexp} || $Config{installprefix});
+        my $own_path = defined $own && length $own ? abs_path($own) : undef;
+        $layout = defined $own_path && $own_path eq $prefix
+            ? 'site' : 'install_base';
+    }
+    my %site_dirs = (
+        lib     => $Config{installsitelib},
+        arch    => $Config{installsitearch},
+        bin     => $Config{installsitebin},
+        script  => $Config{installsitescript} || $Config{installsitebin},
+        man1dir => $Config{installsiteman1dir},
+        man3dir => $Config{installsiteman3dir},
+        %{$args{site_dirs} // {}},
+    );
     return bless {
         native_prefixes => [@$native_prefixes],
-        prefix  => abs_path($args{prefix}),
+        prefix  => $prefix,
+        layout  => $layout,
+        site_dirs => \%site_dirs,
         workdir => abs_path($args{workdir}),
         install_lock => $args{install_lock},
         registry => $args{registry},
@@ -76,6 +101,49 @@ sub new ($class, %args) {
     }, $class;
 }
 
+# The directories this builder installs modules into: the library and its
+# architecture-specific subdirectory.
+sub library_dirs ($self) {
+    return @{$self->{site_dirs}}{qw(lib arch)} if $self->{layout} eq 'site';
+    my $site = File::Spec->catdir($self->{prefix}, 'lib', 'perl5');
+    return ($site, File::Spec->catdir($site, $Config{archname}));
+}
+
+sub _makefile_pl_layout ($self) {
+    return "INSTALL_BASE=$self->{prefix}" if $self->{layout} eq 'install_base';
+    my $dirs = $self->{site_dirs};
+    return ('INSTALLDIRS=site',
+        "INSTALLSITELIB=$dirs->{lib}", "INSTALLSITEARCH=$dirs->{arch}",
+        "INSTALLSITEBIN=$dirs->{bin}", "INSTALLSITESCRIPT=$dirs->{script}",
+        'INSTALLSITEMAN1DIR=' . ($dirs->{man1dir} || 'none'),
+        'INSTALLSITEMAN3DIR=' . ($dirs->{man3dir} || 'none'));
+}
+
+sub _build_pl_layout ($self) {
+    return ('--install_base', $self->{prefix})
+        if $self->{layout} eq 'install_base';
+    my $dirs = $self->{site_dirs};
+    my %paths = (lib => $dirs->{lib}, arch => $dirs->{arch},
+                 bin => $dirs->{bin}, script => $dirs->{script},
+                 ($dirs->{man1dir} ? (bindoc => $dirs->{man1dir}) : ()),
+                 ($dirs->{man3dir} ? (libdoc => $dirs->{man3dir}) : ()));
+    return ('--installdirs', 'site',
+            map { ('--install_path', "$_=$paths{$_}") } sort keys %paths);
+}
+
+# Copies of a module that a site install leaves behind in the INSTALL_BASE
+# tree under the same prefix. They come first in @INC when PERL5LIB names
+# that tree, so they would hide the module just installed.
+sub _shadowing_copies ($self, $module) {
+    return () unless $self->{layout} eq 'site' && defined $module;
+    my @parts = split /::/, $module;
+    $parts[-1] .= '.pm';
+    my $old = File::Spec->catdir($self->{prefix}, 'lib', 'perl5');
+    return grep { -f $_ }
+        File::Spec->catfile($old, @parts),
+        File::Spec->catfile($old, $Config{archname}, @parts);
+}
+
 sub install ($self, $release, %options) {
     my $work = tempdir('release-XXXXXXXX', DIR => $self->{workdir},
                        CLEANUP => 0);
@@ -89,6 +157,7 @@ sub install ($self, $release, %options) {
         xperl_version => "$^V",
         platform      => XPerl::Installer::Platform::current(),
         native_prefixes => [@{$self->{native_prefixes}}],
+        layout        => $self->{layout},
         workdir       => $work,
         phases        => [],
     };
@@ -145,7 +214,7 @@ sub install ($self, $release, %options) {
             $configured_target = 'Makefile';
             @steps = (
                 ['configure', $perl, 'Makefile.PL',
-                    "INSTALL_BASE=$self->{prefix}"],
+                    $self->_makefile_pl_layout],
                 ['build', @make_command],
                 ['test', @make_command, 'test'],
                 ['install', @make_command, 'install'],
@@ -156,7 +225,7 @@ sub install ($self, $release, %options) {
             $configured_target = 'Build';
             @steps = (
                 ['configure', $perl, 'Build.PL',
-                    '--install_base', $self->{prefix}],
+                    $self->_build_pl_layout],
                 ['build', $perl, 'Build'],
                 ['test', $perl, 'Build', 'test'],
                 ['install', $perl, 'Build', 'install'],
@@ -293,6 +362,12 @@ sub install ($self, $release, %options) {
             last;
         }
         $record->{status} = 'installed';
+        if (my @old = $self->_shadowing_copies($release->{module})) {
+            $record->{shadowed_by} = \@old;
+            warn "warning: $_ hides the $release->{module} just installed "
+                . "when PERL5LIB includes $self->{prefix}/lib/perl5\n"
+                for @old;
+        }
         1;
     } or $error = $@ || "installation failed\n";
     # An after_configure hook may stop the attempt because the configured
@@ -383,10 +458,11 @@ sub _run ($self, $source, $log_path, @command) {
     my @include = grep { length $_ && -d $_ }
         split /\Q$Config{path_sep}\E/, $ENV{PERL5LIB} // '';
     @include = map { abs_path($_) } @include;
-    my $site = File::Spec->catdir($self->{prefix}, 'lib', 'perl5');
-    my $arch = File::Spec->catdir($site, $Config{archname});
+    my ($site, $arch) = $self->library_dirs;
     local %ENV = %ENV;
     delete @ENV{qw(MAKEFLAGS MFLAGS GNUMAKEFLAGS MAKEOVERRIDES MAKELEVEL)};
+    # A caller's local::lib settings would send a site install elsewhere.
+    delete @ENV{qw(PERL_MM_OPT PERL_MB_OPT)} if $self->{layout} eq 'site';
     $ENV{PERL5LIB} = join($Config{path_sep}, $site, $arch, @include);
     # Native library prefixes come after anything the caller already set.
     for my $prefix (@{$self->{native_prefixes}}) {

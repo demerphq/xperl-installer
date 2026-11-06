@@ -22,7 +22,12 @@ sub load ($class, $path) {
     my $install = $config->{install} // {};
     die "config install must be a table\n" unless ref($install) eq 'HASH';
     _keys($install, [qw(prefix mirror cache workdir registry jobs repair_jobs
-                       phase_timeout native_prefixes)], 'install');
+                       phase_timeout native_prefixes layout)], 'install');
+    if (exists $install->{layout}) {
+        die "config install.layout must be auto, site or install_base\n"
+            unless !ref($install->{layout}) && defined($install->{layout})
+                && $install->{layout} =~ /\A(?:auto|site|install_base)\z/;
+    }
     if (exists $install->{jobs}) {
         die "config install.jobs must be a positive integer\n"
             unless !ref($install->{jobs}) && defined($install->{jobs})

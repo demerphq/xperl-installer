@@ -17,22 +17,27 @@ repository's root:
 
 ```sh
 prefix="$HOME/perl5/perlbrew/perls/xperl"
-export PERL5LIB="$prefix/lib/perl5${PERL5LIB:+:$PERL5LIB}"
-"$prefix/bin/perl" Makefile.PL INSTALL_BASE="$prefix"
+"$prefix/bin/perl" Makefile.PL
 make
 make test
 make install
-"$prefix/bin/perl" "$prefix/bin/xperl" resolve Sereal::Decoder
-"$prefix/bin/perl" "$prefix/bin/xperl" fetch Sereal::Decoder
-"$prefix/bin/perl" "$prefix/bin/xperl" install --prefix "$prefix" Example::Tiny
+xperl resolve Sereal::Decoder
+xperl fetch Sereal::Decoder
+xperl install --prefix "$prefix" Example::Tiny
 ```
 
 The installed interpreter runs the installer and every CPAN build and test.
-The explicit `PERL5LIB` makes modules installed under `prefix/lib/perl5`
-available to later commands. During development, the installed XPerl can run
-`bin/xperl` from this checkout. The source directory does not enter CPAN
-build paths. End users can run ordinary installs without changing or
-rebuilding XPerl.
+A plain `make install` puts the installer in the interpreter's site library,
+which its `@INC` already searches, so no `PERL5LIB` is needed. During
+development, the installed XPerl can run `bin/xperl` from this checkout. The
+source directory does not enter CPAN build paths. End users can run ordinary
+installs without changing or rebuilding XPerl.
+
+Because `--prefix` above is the interpreter's own prefix, `xperl install`
+puts modules in its site library too (see [Install layout](#install-layout)).
+The earlier local::lib-style setup still works: install with
+`Makefile.PL INSTALL_BASE="$prefix"`, pass `--layout install_base`, and export
+`PERL5LIB="$prefix/lib/perl5"` so later commands find the modules.
 
 To install the current Sereal releases with local compatibility patches:
 
@@ -40,6 +45,26 @@ To install the current Sereal releases with local compatibility patches:
 "$prefix/bin/perl" "$prefix/bin/xperl" install --prefix "$prefix" --registry ../xperl-cpan-ports Sereal::Decoder
 "$prefix/bin/perl" "$prefix/bin/xperl" install --prefix "$prefix" --registry ../xperl-cpan-ports Sereal::Encoder
 ```
+
+## Install layout
+
+`--layout` (or `layout` in the `[install]` table) chooses where modules go:
+
+- `site` builds with `INSTALLDIRS=site` (`--installdirs site` for `Build.PL`)
+  and installs into the running interpreter's site library, script and
+  manual directories. Its `@INC` finds them without `PERL5LIB`.
+- `install_base` builds with `INSTALL_BASE=PREFIX` (`--install_base`) and
+  installs under `PREFIX/lib/perl5`. Scripts that use those modules need that
+  directory in `PERL5LIB`.
+- `auto`, the default, uses `site` when `--prefix` is the interpreter's own
+  prefix (`$Config{siteprefixexp}`, otherwise `$Config{installprefix}`), and
+  `install_base` for any other prefix, such as a validation prefix.
+
+A site install ignores the caller's `PERL_MM_OPT` and `PERL_MB_OPT`, so a
+local::lib setting cannot redirect it. If an older copy of the module remains
+under `PREFIX/lib/perl5`, it comes first in `@INC` whenever `PERL5LIB` names
+that directory. The installer warns about it and lists it under
+`shadowed_by` in the receipt. Receipts record the layout in `layout`.
 
 ## Configuration
 
