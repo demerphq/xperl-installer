@@ -10,8 +10,8 @@ use JSON::PP;
 use Test::More;
 use XPerl::Installer::Build;
 
-my $root = tempdir(CLEANUP => 1,
-                   DIR => $ENV{XPERL_TEST_TMPDIR} // File::Spec->tmpdir);
+my $root = abs_path(tempdir(CLEANUP => 1,
+                   DIR => $ENV{XPERL_TEST_TMPDIR} // File::Spec->tmpdir));
 my $builder = XPerl::Installer::Build->new(
     prefix => File::Spec->catdir($root, 'prefix'),
     workdir => File::Spec->catdir($root, 'work'));
