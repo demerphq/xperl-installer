@@ -43,7 +43,6 @@ sub new ($class, %args) {
         jobs => $jobs,
         prefer => $args{prefer},
         progress => $args{progress},
-        needed => CPAN::Meta::Requirements->new,
         nodes => {},        # cpan_path => node
         modules => {},      # module => cpan_path of the release providing it
         installed => {},    # cpan_path => receipt, from earlier runs
@@ -90,26 +89,51 @@ sub node ($self, $path) { return $self->{nodes}{$path} }
 
 # ---------------------------------------------------------------- graph
 
-sub _add_module ($self, $module, $constraint, $from) {
-    $self->{needed}->add_string_requirement($module, $constraint);
-    return if $self->_satisfied($module);
+# Requirements belong to the dependent that states them: one dependent's
+# constraint never changes what satisfies another. A module maps to one
+# release; every dependent's range is checked against the version that
+# release provides, when known now, and again against the installed version
+# before the dependent is built.
+sub _add_module ($self, $module, $range, $from) {
+    return if $self->_available($module, $range);
     my $path = $self->{modules}{$module};
     if (!defined $path) {
         my $release = $self->{prefer} ? $self->{prefer}->($module) : undef;
+        my $index = eval { $self->{fetcher}->resolve($module) };
         if (!$release) {
+            die "CPAN module not found: $module\n" unless $index;
             $release = $self->{fetcher}->fetch($module);
-            die "CPAN index version $release->{version} does not satisfy $module $constraint\n"
-                unless $self->{needed}->accepts_module($module, $release->{version});
         }
         $release->{module} //= $module;
         $path = $self->_add_release($release);
         $self->{modules}{$module} = $path;
+        $self->{nodes}{$path}{provides}{$module} //= $index->{version}
+            if $index && $index->{cpan_path} eq $path
+                && defined $index->{version} && $index->{version} ne 'undef';
     }
+    my $node = $self->{nodes}{$path};
+    my $provided = $node->{provides}{$module};
+    die "$module $provided from " . _name($node) . " does not satisfy $module $range\n"
+        if defined $provided && !_accepts($module, $range, $provided);
     if ($from) {
         $from->{prereqs}{$path} = 1;
-        $self->{nodes}{$path}{dependents}{$from->{path}} = 1;
+        $from->{needs}{$module} = _merge($from->{needs}{$module}, $module, $range);
+        $node->{dependents}{$from->{path}} = 1;
     }
     return $path;
+}
+
+sub _accepts ($module, $range, $version) {
+    my $requirements = CPAN::Meta::Requirements->new;
+    $requirements->add_string_requirement($module, $range // '0');
+    return $requirements->accepts_module($module, $version);
+}
+
+sub _merge ($existing, $module, $range) {
+    my $requirements = CPAN::Meta::Requirements->new;
+    $requirements->add_string_requirement($module, $existing) if defined $existing;
+    $requirements->add_string_requirement($module, $range // '0');
+    return $requirements->requirements_for_module($module);
 }
 
 sub _add_release ($self, $release, %options) {
@@ -141,6 +165,9 @@ sub _expand ($self) {
             if ($meta) {
                 $release->{distribution} //= $meta->name;
                 $release->{distribution_version} //= $meta->version;
+                my $provides = $meta->provides // {};
+                $node->{provides}{$_} //= $provides->{$_}{version}
+                    for grep { defined $provides->{$_}{version} } keys %$provides;
                 my $structure = $meta->as_struct;
                 $release->{x_use_unsafe_inc} = $structure->{x_use_unsafe_inc} ? 1 : 0
                     if exists $structure->{x_use_unsafe_inc};
@@ -224,6 +251,7 @@ sub _schedule ($self) {
         $self->_block_descendants;
         for my $node ($self->_ready) {
             last if keys(%running) >= $self->{jobs};
+            next unless $self->_needs_met($node);
             $node->{state} = 'running';
             ++$node->{attempts};
             my ($fh, $result) = tempfile('result-XXXXXXXX',
@@ -247,6 +275,20 @@ sub _schedule ($self) {
         unlink $result;
         $self->_record($node, $outcome);
     }
+}
+
+# A dependent is built only if every installed prerequisite satisfies the
+# version range it stated.
+sub _needs_met ($self, $node) {
+    for my $module (sort keys %{$node->{needs} // {}}) {
+        my $range = $node->{needs}{$module};
+        next if $self->_available($module, $range);
+        my $path = $self->{modules}{$module};
+        my $installed = $path ? _name($self->{nodes}{$path}) : 'the installed prerequisite';
+        $self->_fail($node, "$installed does not provide $module $range");
+        return 0;
+    }
+    return 1;
 }
 
 sub _ready ($self) {
@@ -390,11 +432,6 @@ sub _repair_pass ($self) {
 }
 
 # ---------------------------------------------------------- availability
-
-sub _satisfied ($self, $module) {
-    return $self->_available($module,
-        $self->{needed}->requirements_for_module($module) // '0');
-}
 
 sub _available ($self, $module, $range) {
     my $prefix = $self->{builder}{prefix};
