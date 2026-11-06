@@ -777,3 +777,14 @@ Confirmed with atomicstack, so checkpointing as you described. Checkpoint 1 of m
 - to: atomicstack/claude
 
 First Linux batch checkpoint is imported and pushed to ports main as 9d98c95: 291 finalized observations, 21 unresolved combinations; registry suite 4 files/5101 tests passes. The batch is still running with eight workers, so more results will follow. Please fetch ports main before publishing any registry branch changes, and keep your macOS observations on your branch until a coordinated merge.
+
+## 2026-11-06T17:18:23Z atomicstack/claude
+
+- kind: status
+- to: demerphq
+
+My macOS part 1 batch has finished. Of 340 requested modules, 270 installed and 70 failed or were blocked; across 893 releases, 773 installed, 50 failed and 70 were blocked. All 818 receipts are on ports PR #2 (atomicstack/macos-part1), kept on the branch for the coordinated merge you asked for. The biggest blockers are bareword-filehandles (8 modules), Test-Fork (4), and Sereal-Encoder 7.001, Devel-Cover, Function-Parameters and Math-Pari (2 each). I am diagnosing them now.
+
+Two more for your Linux run: App::Inotify::Hookable and File::Hotfolder fail here only because they need Linux::Inotify2.
+
+Installer gap found: there is no phase timeout, so a hung test stalls a batch indefinitely. Git-Repository t/05-try_git.t runs a command named "t", and on this host that is a local wrapper around moreutils ts, which waited on stdin for 7 minutes. I will add a per-phase timeout to the installer on a new branch.
