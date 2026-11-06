@@ -104,6 +104,8 @@ my ($base) = record('EXAMPLE', 'Base', '1.00', indexed => 0);
 record('EXAMPLE', 'Base', '1.10', value => 0, unrecorded => 1);
 record('EXAMPLE', 'App', '1.00', requires => { 'Example::Base' => '1.00' });
 record('EXAMPLE', 'Tool', '1.00', requires => { 'Example::Base' => '0' });
+# Needs a newer Base than the recorded release provides.
+record('EXAMPLE', 'NeedsNewBase', '1.00', requires => { 'Example::Base' => '1.10' });
 # Same distribution name, two authors; only EXAMPLE's needs its patch.
 record('EXAMPLE', 'Patched', '1.00', value => 0, patch_set => 'fix');
 record('OTHER', 'Patched', '1.00', module => 'Other::Patched', indexed => 0);
@@ -208,7 +210,7 @@ my $planned = by_key($plan);
 is_deeply([sort keys %$planned],
           [sort((map { "EXAMPLE/$_" } qw(App Base Broken Changed CycleA CycleB
                                          Gone Multi NeedsBroken Patched Tool
-                                         Alpha Beta Omega)),
+                                         Alpha Beta Omega NeedsNewBase)),
                 'OTHER/Patched')],
           'selects one release for every recorded success')
     or diag explain [sort keys %$planned];
@@ -264,6 +266,8 @@ like($entry->{'EXAMPLE/Beta'}{reason}, qr/Omega-1\.00/,
 unlike($entry->{'EXAMPLE/Beta'}{reason}, qr/Alpha-1\.00: test failed/,
        'a dependent does not report the parent as failing its tests');
 is($entry->{'EXAMPLE/Omega'}{status}, 'failed', 'the broken prerequisite fails');
+is($entry->{'EXAMPLE/NeedsNewBase'}{status}, 'failed',
+   'sequential run rejects a recorded prerequisite that is too old');
 like($entry->{'EXAMPLE/CycleA'}{reason}, qr/dependency cycle/, 'cycle is reported');
 like($entry->{'EXAMPLE/CycleB'}{reason}, qr/dependency cycle/,
      'both members of the cycle fail');
@@ -280,7 +284,7 @@ ok(-f File::Spec->catfile($prefix, qw(lib perl5 Example App.pm)),
 is($report->{platform}{key}, "$^O/$Config{archname}", 'report records the platform');
 is($report->{xperl}{version}, "$^V", 'report records the XPerl version');
 is($report->{counts}{installed}, 5, 'report counts installed entries');
-is($report->{counts}{failed}, 7, 'report counts failed entries');
+is($report->{counts}{failed}, 8, 'report counts failed entries');
 is($report->{counts}{skipped}, 2, 'report counts skipped entries');
 for my $name (qw(report.json summary.txt state.json)) {
     ok(-f File::Spec->catfile($workdir, 'install-ported', $name), "$name written");
@@ -313,7 +317,7 @@ my $other_summary = do {
         or die $!;
     local $/; <$in>;
 };
-like($other_summary, qr/^excluded: 14 entries/m,
+like($other_summary, qr/^excluded: 15 entries/m,
      'the readable summary counts excluded entries');
 unlike($other_summary, qr{EXAMPLE/App}, 'excluded entries are not listed one by one');
 
@@ -337,6 +341,14 @@ like($parallel->{'EXAMPLE/Beta'}{reason}, qr/Omega-1\.00/,
 like($parallel->{'EXAMPLE/CycleA'}{reason}, qr/dependency cycle/, 'parallel run reports the cycle');
 is($parallel->{'EXAMPLE/Changed'}{status}, 'skipped', 'parallel run skips changed source');
 is($parallel->{'EXAMPLE/Gone'}{status}, 'skipped', 'parallel run skips a missing archive');
+is($parallel->{'EXAMPLE/NeedsNewBase'}{status}, 'failed',
+   'parallel run rejects a recorded prerequisite that is too old');
+like($parallel->{'EXAMPLE/NeedsNewBase'}{reason}, qr/Example::Base 1\.10/,
+     'the rejection names the module and the required version');
+ok(!grep({ open my $in, '<', $_ or die $!;
+           JSON::PP->new->decode(do { local $/; <$in> })->{cpan_path} =~ /NeedsNewBase-/ }
+         glob File::Spec->catfile($parallel_work, 'release-*', 'receipt.json')),
+   'the dependent of the too-old release is never built');
 my @parallel_base = grep {
     open my $in, '<', $_ or die $!;
     JSON::PP->new->decode(do { local $/; <$in> })->{cpan_path} =~ /Base-/

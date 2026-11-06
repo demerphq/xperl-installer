@@ -52,7 +52,8 @@ sub release ($name, %opt) {
         generated_by => 'parallel.t', release_status => 'stable',
         dynamic_config => $opt{dynamic} ? JSON::PP::true : JSON::PP::false,
         prereqs => { runtime => { requires => {
-            map { ("Example::$_" => 0) } @{$opt{requires} // []} } } },
+            map { my ($n, $v) = split />=/; ("Example::$n" => $v // 0) }
+            @{$opt{requires} // []} } } },
     }));
     $tar->write(File::Spec->catfile($releases, "$dist.tar.gz"), 1);
     push @index, "$module 1.00 E/EX/EXAMPLE/$dist.tar.gz";
@@ -74,6 +75,13 @@ release('LoopB', requires => ['LoopA']);
 release('Loop', requires => ['LoopA']);
 release('Late');
 release('Dyn', dynamic => ['Example::Late']);
+# Two dependents need different versions of one module; the scheduled
+# release only satisfies the weaker requirement.
+release('Ver');
+release('VerLow', requires => ['Ver']);
+release('VerAHigh', requires => ['Ver>=2']);    # resolved before VerLow
+release('VerZHigh', requires => ['Ver>=2']);    # resolved after VerLow
+release('VerTop', requires => [qw(VerAHigh VerLow VerZHigh)]);
 # Two modules from one release, required through different paths.
 release('Twin', extra => ['Extra']);
 release('ViaTwin', requires => ['Twin']);
@@ -185,6 +193,22 @@ is(scalar(grep { $_->{cpan_path} =~ /Example-Twin-1\.00/ } receipts($work)), 1,
    'a release required under two module names is built once');
 is(scalar(grep { $_->{cpan_path} =~ /Example-Twin-1\.00/ } @{$result->{nodes}}), 1,
    'the graph has one node for the release');
+
+# A release that cannot satisfy a stronger requirement is rejected before
+# the dependent that needs it is built.
+($status, $result, $prefix, $work) = install('Example::VerTop', '--jobs', 2);
+isnt($status, 0, 'an unsatisfiable version requirement fails the install');
+for my $strict (qw(VerAHigh VerZHigh)) {
+    is(node($result, $strict)->{status}, 'failed',
+       "$strict, which needs the higher version, fails");
+    like(node($result, $strict)->{reason}, qr/Example::Ver\b.*2/,
+         "${strict}'s failure names the module and the required version");
+    ok(!grep({ $_->{cpan_path} =~ /Example-$strict-/ } receipts($work)),
+       "$strict is not built");
+}
+is(node($result, 'VerLow')->{status}, 'installed',
+   'a dependent satisfied by the release still installs');
+is(node($result, 'VerTop')->{status}, 'blocked', 'their common dependent is blocked');
 
 # --jobs 1 keeps the sequential path.
 ($status, $result) = install('Example::Top', '--jobs', 1);
