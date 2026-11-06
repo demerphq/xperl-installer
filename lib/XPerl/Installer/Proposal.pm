@@ -21,6 +21,31 @@ sub files ($root) {
     return \%files;
 }
 
+# Fingerprint only files that can enter the proposed patch. Build products
+# already in the working tree must not make an unchanged repair look useful.
+sub source_fingerprint ($class, %args) {
+    my ($original, $source, $new_files) =
+        @args{qw(original source new_files)};
+    my $original_files = files($original);
+    my %candidates = (%$original_files, %$new_files);
+    my $digest = Digest::SHA->new(256);
+
+    for my $relative (sort keys %candidates) {
+        my $path = File::Spec->catfile($source, $relative);
+        $digest->add($relative, "\0");
+        unless (-f $path) {
+            $digest->add("removed\0");
+            next;
+        }
+        open my $input, '<:raw', $path
+            or die "cannot read $path: $!\n";
+        my $file_digest = Digest::SHA->new(256)->addfile($input)->hexdigest;
+        close $input or die "cannot close $path: $!\n";
+        $digest->add($file_digest, "\0");
+    }
+    return $digest->hexdigest;
+}
+
 sub write_patch ($class, %args) {
     my ($original, $source, $path, $new_files) =
         @args{qw(original source path new_files)};

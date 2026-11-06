@@ -243,7 +243,8 @@ digest, XPerl executable and version, attempt number, source directory,
 failed phase, command, and log path. When a registry patch set names migration
 recipes, `recipes` contains their IDs and absolute Markdown paths. The
 program should edit the source tree and exit zero when ready for another
-build. A nonzero exit stops installation. The installer reruns configuration,
+build. A nonzero exit or no source change stops repair. The installer reruns
+configuration,
 build, and tests after each successful repair call, and records every phase
 and request in the receipt. Installation runs only after the tests pass.
 

@@ -1,4 +1,7 @@
 Unreleased
+    Stop repair attempts when an agent leaves the source unchanged. Receipts
+    mark the unchanged attempt so missing external prerequisites do not spend
+    the remaining repair budget on identical retries.
     install --prefix set to the interpreter's own prefix installs into its
     site library, which @INC already searches, instead of PREFIX/lib/perl5.
     --layout auto|site|install_base (or install.layout) chooses explicitly;

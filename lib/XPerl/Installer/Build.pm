@@ -336,6 +336,10 @@ sub install ($self, $release, %options) {
                 my $repair_log = File::Spec->catfile($work,
                                                      "repair-$attempt.log");
                 my $before_files = XPerl::Installer::Proposal::files($source);
+                my $before_source = XPerl::Installer::Proposal
+                    ->source_fingerprint(original => $original,
+                                         source => $source,
+                                         new_files => \%new_files);
                 ++$self->{repair_calls};
                 my $repair_lock = $self->{repair_lock}
                     ? _lock($self->{repair_lock}) : undef;
@@ -355,6 +359,14 @@ sub install ($self, $release, %options) {
                 my $after_files = XPerl::Installer::Proposal::files($source);
                 $new_files{$_} = 1 for grep { !$before_files->{$_} }
                     keys %$after_files;
+                my $after_source = XPerl::Installer::Proposal
+                    ->source_fingerprint(original => $original,
+                                         source => $source,
+                                         new_files => \%new_files);
+                if ($after_source eq $before_source) {
+                    $record->{phases}[-1]{unchanged} = JSON::PP::true;
+                    die "repair made no source changes; see $repair_log\n";
+                }
                 $record->{phases}[-1]{removed_build_files} =
                     _remove_build_products($source, $original, \%new_files);
                 next ATTEMPT;

@@ -127,9 +127,24 @@ ok(-f File::Spec->catfile($prefix, qw(lib perl5 Example Fixable.pm)),
 
 open $pipe, '-|', $^X, $script, 'install', '--mirror', $mirror,
     '--cache', $cache, '--prefix', $prefix, '--repair-command', $agent,
-    '--repair-attempts', '1', 'Example::Unfixable' or die $!;
+    '--repair-attempts', '2', 'Example::Unfixable' or die $!;
 my $failure = do { local $/; <$pipe> };
-ok(!close $pipe, 'repair stops after configured attempt limit');
+ok(!close $pipe, 'repair stops when the agent leaves source unchanged');
+like($failure, qr/repair made no source changes/,
+     'the failure explains why another repair was not attempted');
+my ($unfixed_receipt) = $failure =~ /"receipt"\s*:\s*"([^"]+)"/;
+ok(defined $unfixed_receipt && -f $unfixed_receipt,
+   'the unchanged repair has a receipt');
+if ($unfixed_receipt) {
+    my $unfixed = JSON::PP->new->decode(do {
+        open my $input, '<', $unfixed_receipt or die $!;
+        local $/; <$input>;
+    });
+    is(scalar(grep { $_->{name} eq 'repair' } @{$unfixed->{phases}}), 1,
+       'the no-change result uses one repair call');
+    ok($unfixed->{phases}[-1]{unchanged},
+       'the receipt marks the repair as unchanged');
+}
 ok(!-f File::Spec->catfile($prefix, qw(lib perl5 Example Unfixable.pm)),
    'unrepaired module was not installed');
 
