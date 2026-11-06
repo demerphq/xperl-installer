@@ -7,6 +7,7 @@ use Archive::Tar;
 use Config;
 use Cwd qw(abs_path getcwd);
 use File::Basename qw(dirname);
+use File::Find qw(finddepth);
 use File::Path qw(make_path);
 use File::Spec;
 use File::Temp qw(tempdir);
@@ -230,6 +231,8 @@ sub install ($self, $release, %options) {
                 my $after_files = XPerl::Installer::Proposal::files($source);
                 $new_files{$_} = 1 for grep { !$before_files->{$_} }
                     keys %$after_files;
+                $record->{phases}[-1]{removed_build_files} =
+                    _remove_build_products($source, $original, \%new_files);
                 next ATTEMPT;
             }
             last;
@@ -245,6 +248,35 @@ sub install ($self, $release, %options) {
     die "$error receipt: $receipt\n" if $error;
     $record->{receipt} = $receipt;
     return $record;
+}
+
+# Make compares timestamps, and some make programs (GNU make 3.81, the
+# macOS default) use one-second resolution. A repair that lands in the same
+# second as the previous build can leave stale build products that make
+# considers current. Remove every file that is neither from the original
+# release nor added by a patch or repair, so the next attempt rebuilds from
+# the repaired source.
+sub _remove_build_products ($source, $original, $keep) {
+    my $original_files = XPerl::Installer::Proposal::files($original);
+    my $source_files = XPerl::Installer::Proposal::files($source);
+    my $removed = 0;
+    for my $relative (sort keys %$source_files) {
+        next if $original_files->{$relative} || $keep->{$relative};
+        my $path = File::Spec->catfile($source, $relative);
+        unlink $path or die "cannot remove build product $path: $!\n";
+        ++$removed;
+    }
+    finddepth({
+        no_chdir => 1,
+        wanted => sub {
+            my $path = $File::Find::name;
+            return if $path eq $source || -l $path || !-d $path;
+            my $relative = substr($path, length($source) + 1);
+            return if -d File::Spec->catdir($original, $relative);
+            rmdir $path;    # only succeeds once the directory is empty
+        },
+    }, $source);
+    return $removed;
 }
 
 sub _unpack ($archive, $work) {

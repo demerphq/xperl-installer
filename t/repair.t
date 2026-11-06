@@ -70,6 +70,12 @@ $body =~ s/sub value \{ 0 \}/sub value { 42 }/
 open my $output, '>', $module or die $!;
 print {$output} $body;
 close $output or die $!;
+# Make cannot tell a repair from the first build when both land in the
+# same timestamp unit (one second for GNU make 3.81). Backdating the edit
+# and post-dating the first build's marker makes that case deterministic.
+utime 1_000_000_000, 1_000_000_000, $module or die $!;
+my $marker_file = File::Spec->catfile($request->{source}, 'pm_to_blib');
+utime time + 3600, time + 3600, $marker_file if -e $marker_file;
 my $added = File::Spec->catfile($request->{source},
                                 qw(lib Example Added.pm));
 open my $extra, '>', $added or die $!;
