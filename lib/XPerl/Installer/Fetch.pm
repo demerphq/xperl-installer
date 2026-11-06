@@ -49,15 +49,27 @@ sub resolve ($self, $module, %args) {
 
 sub fetch ($self, $module, %args) {
     my $result = $self->resolve($module, %args);
-    my $path = $result->{cpan_path};
+    return { %$result, %{$self->fetch_path($result->{cpan_path}, %args)} };
+}
+
+# Fetch one exact release by its CPAN author path, without consulting the
+# package index. Used when a caller already holds a recorded release
+# identity. A missing archive dies with a message starting "archive
+# unavailable".
+sub fetch_path ($self, $path, %args) {
+    _check_release_path($path);
     my $archive = File::Spec->catfile($self->{cache}, 'authors', 'id',
                                       split m{/}, $path);
-    $self->_download("authors/id/$path", $archive)
-        if $args{refresh} || !-f $archive;
-    $result->{archive} = $archive;
-    $result->{sha256} = _digest($archive);
-    $result->{archive_members} = _check_archive($archive);
-    return $result;
+    if ($args{refresh} || !-f $archive) {
+        eval { $self->_download("authors/id/$path", $archive); 1 }
+            or die "archive unavailable: $@";
+    }
+    return {
+        cpan_path => $path,
+        archive => $archive,
+        sha256 => _digest($archive),
+        archive_members => _check_archive($archive),
+    };
 }
 
 sub _download ($self, $relative, $target) {

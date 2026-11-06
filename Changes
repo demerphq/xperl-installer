@@ -4,6 +4,9 @@ Unreleased
     Tests compare canonical paths and pass on macOS.
     Receipts record the platform: operating system, architecture name,
     compiler, make program, thread support, and XPerl commit.
+    Add install-ported, which rebuilds every release recorded as successful
+    in the ports registry with a dry run, filters, resumable state, and
+    JSON and text reports.
 
 0.002  2026-11-06
     Add TOML configuration and named external repair agent profiles.

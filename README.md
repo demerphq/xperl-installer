@@ -154,3 +154,68 @@ and must return the same exit status and source edits. The request contains
 no provider-specific fields. Credentials and provider settings belong to the
 wrapper, not the installer or its receipts. The installer does not bundle an
 AI service or submit generated patches yet.
+
+## Validating recorded ports
+
+`install-ported` rebuilds every release that the ports registry records as
+successfully built under XPerl, whether or not it needed a patch. It checks
+that the current XPerl, installer, and registry still work together, and it
+exposes stale patches, installer defects, portability problems, and XPerl
+regressions. Use a fresh prefix and work directory for each validation, and
+keep one download cache across runs:
+
+```sh
+validation_prefix="$PWD/tmp/ported-prefix"
+export PERL5LIB="$validation_prefix/lib/perl5:$prefix/lib/perl5"
+"$prefix/bin/perl" "$prefix/bin/xperl" install-ported --dry-run \
+    --registry ../xperl-cpan-ports
+"$prefix/bin/perl" "$prefix/bin/xperl" install-ported \
+    --registry ../xperl-cpan-ports --prefix "$validation_prefix" \
+    --workdir "$PWD/tmp/ported-work"
+```
+
+`--dry-run` prints the selection and the patch set chosen for the running
+XPerl without building anything; add `--json` for a machine-readable plan.
+`--only AUTHOR/Distribution` and `--exclude AUTHOR/Distribution` restrict
+the run and may be repeated. A run continues after individual failures and
+writes `report.json` and `summary.txt` under `WORKDIR/install-ported/`. The
+report records the platform, XPerl version and configuration, registry
+revision, and for every entry its source identity, recorded and applied
+patch sets, status, failed phase, test summary, and receipts. The command
+exits non-zero when any entry failed or was skipped. No repair program runs
+unless `--agent` or `--repair-command` is given.
+
+Selection rules:
+
+- Candidates are the `installed` observations in every `status.json` under
+  each configured registry repository. A record that is not at the location
+  the placement rules give for its author and distribution is reported as
+  invalid and ignored.
+- One release is chosen per author and distribution. Observations are
+  grouped by exact archive path and source hash. Releases with a success
+  under the running XPerl version come first, then the highest release
+  version, the most recent success, and the archive path. A release whose
+  latest observation failed is still selected and flagged in the report.
+- The recorded archive is fetched by its CPAN path, never replaced with the
+  current CPAN index answer. A different source hash is reported as
+  `skipped` with "source changed", and a missing archive as `skipped` with
+  "archive unavailable".
+- Registry patches follow the ordinary rules for the exact release, source
+  hash, and running XPerl version.
+- Prerequisites are resolved as in an ordinary install, except that a
+  prerequisite whose CPAN distribution is itself selected uses the recorded
+  release. Each release is built at most once per run: an entry already
+  built as a dependency is reported as `satisfied`, and dependents of a
+  failed release fail with "dependency failed" without rebuilding it. A
+  dependency cycle fails the entries involved and names the cycle.
+- Each selected release is built from its recorded archive even when the
+  running XPerl already provides the module.
+
+A second run in the same work directory requires `--resume`. Resuming keeps
+an earlier success only when its receipt still exists and the XPerl binary,
+version, prefix, source hash, and selected patches are unchanged. Earlier
+failures are always rebuilt and never reported as successes.
+
+Receipts record the platform (operating system, architecture name, compiler,
+make program, thread support, and XPerl commit), so results from different
+hosts can be kept apart when they are imported into the ports registry.

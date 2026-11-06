@@ -11,18 +11,36 @@ use File::Spec;
 use Module::Metadata;
 use Parse::CPAN::Meta;
 
+# Options:
+#   fetcher, builder  required
+#   prefer            optional code reference called with a module name; it
+#                     returns a fetched release to use instead of the CPAN
+#                     index answer, or undef. Batch installs use it to build
+#                     recorded releases.
 sub new ($class, %args) {
     die "fetcher and builder are required\n"
         unless $args{fetcher} && $args{builder};
-    return bless {
+    my $self = bless {
         fetcher => $args{fetcher},
         builder => $args{builder},
-        needed => CPAN::Meta::Requirements->new,
-        visiting => {},
-        installed => {},
-        provided => {},
+        prefer => $args{prefer},
+        installed => {},    # cpan_path => receipt path
+        failed => {},       # cpan_path => reason
+        provided => {},     # module => version declared by an installed release
         receipts => [],
     }, $class;
+    $self->reset_request;
+    return $self;
+}
+
+# Forget the constraints and traversal state of a previous request while
+# keeping what was installed or failed. A batch calls this between entries
+# so unrelated requests cannot conflict with each other.
+sub reset_request ($self) {
+    $self->{needed} = CPAN::Meta::Requirements->new;
+    $self->{visiting} = {};
+    $self->{stack} = [];
+    return;
 }
 
 sub install ($self, $module) {
@@ -34,52 +52,106 @@ sub install ($self, $module) {
     };
 }
 
+# Build one exact, already fetched release and its prerequisites, even when
+# the requested module is already available elsewhere on @INC.
+sub install_release ($self, $release) {
+    my $module = $release->{module};
+    $self->{needed}->add_string_requirement($module, '0');
+    $self->_enter($module);
+    $self->_build($release, $module, force => 1);
+    die "installed distribution does not provide required $module\n"
+        unless $self->_satisfied($module);
+    $self->_leave($module);
+    return $self->{installed}{$release->{cpan_path}};
+}
+
+sub mark_installed ($self, $cpan_path, $receipt) {
+    $self->{installed}{$cpan_path} = $receipt;
+    return;
+}
+
 sub _install ($self, $module, $constraint) {
     $self->{needed}->add_string_requirement($module, $constraint);
     return if $self->_satisfied($module);
-    die "dependency cycle at $module\n" if $self->{visiting}{$module};
+    $self->_enter($module);
+
+    my $release = $self->{prefer} ? $self->{prefer}->($module) : undef;
+    if (!$release) {
+        $release = $self->{fetcher}->fetch($module);
+        die "CPAN index version $release->{version} does not satisfy $module $constraint\n"
+            unless $self->{needed}->accepts_module($module, $release->{version});
+    }
+    $self->_build($release, $module);
+    die "installed distribution does not provide required $module\n"
+        unless $self->_satisfied($module);
+    $self->_leave($module);
+}
+
+sub _enter ($self, $module) {
+    if ($self->{visiting}{$module}) {
+        my @stack = @{$self->{stack}};
+        my ($start) = grep { $stack[$_] eq $module } 0 .. $#stack;
+        die "dependency cycle: "
+            . join(' -> ', @stack[$start .. $#stack], $module) . "\n";
+    }
     $self->{visiting}{$module} = 1;
+    push @{$self->{stack}}, $module;
+}
 
-    my $release = $self->{fetcher}->fetch($module);
-    die "CPAN index version $release->{version} does not satisfy $module $constraint\n"
-        unless $self->{needed}->accepts_module($module, $release->{version});
-    my $meta = eval { _metadata($release->{archive}) };
-    die "invalid CPAN metadata for $module ($release->{cpan_path}): $@"
-        if $@;
-    if ($meta) {
-        $release->{distribution} = $meta->name;
-        $release->{distribution_version} = $meta->version;
-        my $structure = $meta->as_struct;
-        $release->{x_use_unsafe_inc} = $structure->{x_use_unsafe_inc} ? 1 : 0
-            if exists $structure->{x_use_unsafe_inc};
-        $self->_install_prereqs($meta);
-    }
-    else {
-        ($release->{distribution}, $release->{distribution_version}) =
-            _identity_from_path($release->{cpan_path});
-    }
+sub _leave ($self, $module) {
+    delete $self->{visiting}{$module};
+    pop @{$self->{stack}};
+}
 
-    if (!$self->_satisfied($module)) {
-        die "distribution $release->{cpan_path} was already installed but lacks $module\n"
-            if $self->{installed}{$release->{cpan_path}};
+sub _build ($self, $release, $module, %options) {
+    my $path = $release->{cpan_path};
+    die "dependency failed: $path: $self->{failed}{$path}\n"
+        if exists $self->{failed}{$path};
+    if ($self->{installed}{$path}) {
+        return if $options{force} || $self->_satisfied($module);
+        die "distribution $path was already installed but lacks $module\n";
+    }
+    my $built = eval {
+        my $meta = eval { _metadata($release->{archive}) };
+        die "invalid CPAN metadata for $module ($path): $@" if $@;
+        if ($meta) {
+            $release->{distribution} //= $meta->name;
+            $release->{distribution_version} //= $meta->version;
+            my $structure = $meta->as_struct;
+            $release->{x_use_unsafe_inc} = $structure->{x_use_unsafe_inc} ? 1 : 0
+                if exists $structure->{x_use_unsafe_inc};
+            $self->_install_prereqs($meta);
+        }
+        elsif (!defined $release->{distribution}) {
+            ($release->{distribution}, $release->{distribution_version}) =
+                _identity_from_path($path);
+        }
+        return 1 if !$options{force} && $self->_satisfied($module);
         my $receipt = $self->{builder}->install($release,
             after_configure => sub ($source) {
                 for my $name (qw(MYMETA.json MYMETA.yml)) {
-                    my $path = File::Spec->catfile($source, $name);
-                    next unless -f $path;
-                    my $configured = CPAN::Meta->load_file($path,
+                    my $meta_path = File::Spec->catfile($source, $name);
+                    next unless -f $meta_path;
+                    my $configured = CPAN::Meta->load_file($meta_path,
                         { lazy_validation => 1 });
                     $self->_install_prereqs($configured);
                     last;
                 }
             });
-        $self->{installed}{$release->{cpan_path}} = 1;
+        $self->{installed}{$path} = $receipt->{receipt};
         $self->_remember_provides($meta) if $meta;
         push @{$self->{receipts}}, $receipt->{receipt};
+        1;
+    };
+    return if $built;
+    my $error = $@ || "installation failed\n";
+    # A failure inside a prerequisite is recorded against that prerequisite;
+    # this release failed because of it.
+    if ($error !~ /\Adependency (?:failed|cycle)/) {
+        (my $reason = $error) =~ s/\s+\z//;
+        $self->{failed}{$path} = (split /\n/, $reason)[0];
     }
-    die "installed distribution does not provide required $module\n"
-        unless $self->_satisfied($module);
-    delete $self->{visiting}{$module};
+    die $error;
 }
 
 sub _install_prereqs ($self, $meta) {

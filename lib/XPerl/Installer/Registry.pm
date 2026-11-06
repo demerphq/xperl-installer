@@ -6,6 +6,8 @@ use feature 'signatures';
 use Cwd qw(abs_path);
 use Digest::SHA;
 use Encode qw(encode);
+use File::Basename ();
+use File::Find ();
 use File::Spec;
 use JSON::PP;
 use version;
@@ -120,19 +122,103 @@ sub _distribution_directory ($self, $release) {
     my $distribution = $release->{distribution};
     return File::Spec->catdir($self->{path}, 'distributions', $distribution)
         unless $self->{repositories};
+    return $self->directory_for(author_from_path($release->{cpan_path}),
+                                $distribution);
+}
 
-    my $cpan_path = $release->{cpan_path} // '';
+sub author_from_path ($cpan_path) {
+    $cpan_path //= '';
     my ($initial, $pair, $author) =
         $cpan_path =~ m{\A([A-Z])/([A-Z]{2})/([A-Z0-9_-]+)/(?:[^/]+/)*[^/]+\z};
     die "invalid CPAN author path: $cpan_path\n"
         unless defined($author)
             && substr($author, 0, 1) eq $initial
             && substr($author, 0, 2) eq $pair;
+    return $author;
+}
+
+# The registry directory for one CPAN author and distribution under the
+# configured placement: jump consistent hash selects the repository and the
+# first SipHash byte selects the shard prefix.
+sub directory_for ($self, $author, $distribution) {
+    die "registry has no sharded layout\n" unless $self->{repositories};
+    die "invalid CPAN author: $author\n"
+        unless defined($author) && $author =~ /\A[A-Z0-9_-]+\z/;
+    die "invalid distribution name: $distribution\n"
+        unless defined($distribution)
+            && $distribution =~ /\A[A-Za-z0-9][A-Za-z0-9_.-]*\z/;
     my $key = encode('UTF-8', "$author/$distribution");
     my $repository = jumphash_string($key, scalar @{$self->{repositories}});
     my $prefix = unpack 'H2', siphash_2_4($key, "\0" x 16);
     return File::Spec->catdir($self->{repositories}[$repository], 'data',
                               $prefix, $author, $distribution);
+}
+
+# Every build status record in every configured repository. A record is
+# accepted only where the placement rules would put it; anything else is
+# returned as invalid with a reason rather than guessed at.
+sub status_records ($self) {
+    die "batch status records require a registry.json layout\n"
+        unless $self->{repositories};
+    my (@records, @invalid, %seen);
+    for my $repository (@{$self->{repositories}}) {
+        my $data = File::Spec->catdir($repository, 'data');
+        next unless -d $data;
+        my @paths;
+        File::Find::find({
+            no_chdir => 1,
+            wanted => sub {
+                push @paths, $File::Find::name
+                    if -f $File::Find::name
+                        && File::Basename::basename($File::Find::name)
+                            eq 'status.json';
+            },
+        }, $data);
+        for my $path (sort @paths) {
+            my $record = eval {
+                open my $input, '<:raw', $path or die "cannot read: $!\n";
+                my $status = JSON::PP->new->decode(do { local $/; <$input> });
+                die "unsupported status schema\n"
+                    unless ref($status) eq 'HASH'
+                        && ($status->{schema} // 0) == 2
+                        && ref($status->{observations}) eq 'ARRAY';
+                my $expected = File::Spec->catfile(
+                    $self->directory_for($status->{author},
+                                         $status->{distribution}),
+                    'status.json');
+                die "record is not at its placement ($expected)\n"
+                    unless abs_path($path) eq abs_path($expected);
+                my $key = "$status->{author}/$status->{distribution}";
+                die "duplicate status record for $key\n" if $seen{$key}++;
+                { key => $key, path => abs_path($path), %$status };
+            };
+            if ($record) { push @records, $record }
+            else {
+                chomp(my $reason = $@);
+                push @invalid, { path => $path, reason => $reason };
+            }
+        }
+    }
+    return { records => \@records, invalid => \@invalid };
+}
+
+# The git revision of the registry checkout, when it is one. Missing git
+# or a non-checkout registry is reported as undefined, not as an error.
+sub revision ($self) {
+    my $root = $self->{path};
+    return {} unless -e File::Spec->catfile($root, '.git');
+    my $head = _git($root, 'rev-parse', 'HEAD');
+    return {} unless defined $head;
+    my $status = _git($root, 'status', '--porcelain', '--untracked-files=no');
+    return { commit => $head, dirty => length($status // '') ? 1 : 0 };
+}
+
+sub _git ($root, @arguments) {
+    open my $pipe, '-|', 'git', '-C', $root, @arguments or return;
+    my $output = do { local $/; <$pipe> };
+    close $pipe or return;
+    chomp $output if defined $output;
+    return $output;
 }
 
 1;
