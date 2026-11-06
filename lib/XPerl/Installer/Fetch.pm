@@ -24,7 +24,7 @@ sub new ($class, %args) {
 sub resolve ($self, $module, %args) {
     die "invalid CPAN module name\n"
         unless defined $module
-            && $module =~ /\A[A-Za-z_][A-Za-z_0-9]*(?:::[A-Za-z_][A-Za-z_0-9]*)*\z/;
+            && $module =~ /\A[A-Za-z_][A-Za-z_0-9]*(?:::[A-Za-z_0-9]+)*\z/;
 
     my $index = File::Spec->catfile($self->{cache}, '02packages.details.txt.gz');
     $self->_download('modules/02packages.details.txt.gz', $index)

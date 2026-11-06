@@ -26,6 +26,7 @@ File: 02packages.details.txt
 URL: http://www.cpan.org/modules/02packages.details.txt
 
 Example::Tiny 1.00 E/EX/EXAMPLE/Example-Tiny-1.00.tar.gz
+CPAN::02Packages::Search v1.0.0 S/SK/SKAJI/CPAN-02Packages-Search-v1.0.0.tar.gz
 INDEX
 gzip \$index => File::Spec->catfile($index_dir, '02packages.details.txt.gz')
     or die $GzipError;
@@ -41,6 +42,9 @@ is_deeply($fetcher->resolve('Example::Tiny'), {
     version => '1.00',
     cpan_path => 'E/EX/EXAMPLE/Example-Tiny-1.00.tar.gz',
 }, 'resolves a module through the package index');
+is($fetcher->resolve('CPAN::02Packages::Search')->{cpan_path},
+   'S/SK/SKAJI/CPAN-02Packages-Search-v1.0.0.tar.gz',
+   'resolves a module with a numeric namespace segment');
 
 my $result = $fetcher->fetch('Example::Tiny');
 is($result->{archive_members}, 1, 'checks the fetched archive');
