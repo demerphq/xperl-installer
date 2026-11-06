@@ -75,13 +75,27 @@ sub _install ($self, $module, $constraint) {
     return if $self->_satisfied($module);
     $self->_enter($module);
 
+    # A prerequisite's own failure is reported to its dependents as a
+    # dependency failure that names the release that failed, so no parent is
+    # blamed (or recorded as failed) for it.
+    my $nested = @{$self->{stack}} > 1;
     my $release = $self->{prefer} ? $self->{prefer}->($module) : undef;
     if (!$release) {
         $release = $self->{fetcher}->fetch($module);
         die "CPAN index version $release->{version} does not satisfy $module $constraint\n"
             unless $self->{needed}->accepts_module($module, $release->{version});
     }
-    $self->_build($release, $module);
+    if ($nested) {
+        eval { $self->_build($release, $module); 1 } or do {
+            my $error = $@ || "installation failed\n";
+            die $error if $error =~ /\Adependency (?:failed|cycle)/;
+            my ($reason) = split /\n/, $error;
+            die "dependency failed: $release->{cpan_path}: $reason\n";
+        };
+    }
+    else {
+        $self->_build($release, $module);
+    }
     die "installed distribution does not provide required $module\n"
         unless $self->_satisfied($module);
     $self->_leave($module);
