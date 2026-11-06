@@ -3,6 +3,7 @@ use warnings;
 use FindBin;
 use lib "$FindBin::Bin/../lib";
 use Archive::Tar;
+use Config;
 use File::Path qw(make_path);
 use File::Spec;
 use File::Temp qw(tempdir);
@@ -64,6 +65,14 @@ is_deeply([map { $_->{name} } @{$receipt->{phases}}],
 ok(-f File::Spec->catfile($prefix, qw(lib perl5 Example Tiny.pm)),
    'module installed into the selected prefix');
 ok(-f $receipt_path, 'receipt written');
+my $platform = $receipt->{platform} // {};
+is($platform->{os}, $^O, 'receipt records the operating system');
+is($platform->{archname}, $Config{archname},
+   'receipt records the interpreter architecture');
+is($platform->{key}, "$^O/$Config{archname}",
+   'receipt records a stable platform key');
+ok(exists $platform->{usethreads}, 'receipt records thread support');
+ok(length($platform->{cc} // ''), 'receipt records the C compiler');
 
 my $broken = Archive::Tar->new;
 $broken->add_data('Example-Broken-1.00/Makefile.PL', <<'MAKEFILE');

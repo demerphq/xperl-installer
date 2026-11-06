@@ -8,6 +8,7 @@ lib/XPerl/Installer/Build.pm
 lib/XPerl/Installer/Config.pm
 lib/XPerl/Installer/Deps.pm
 lib/XPerl/Installer/Fetch.pm
+lib/XPerl/Installer/Platform.pm
 lib/XPerl/Installer/Proposal.pm
 lib/XPerl/Installer/Registry.pm
 planning/claude-code-prompt.md
