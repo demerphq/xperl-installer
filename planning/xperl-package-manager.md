@@ -83,7 +83,7 @@ the installation target. A source checkout's `lib/` must not enter CPAN build
 paths. The installer never edits or rebuilds XPerl as part of an installation.
 
 During early development, a developer or coding agent may also have an XPerl
-source checkout (`xperl/`, named `perl/` in this workspace). When a build
+source checkout (`xperl/` in this workspace). When a build
 fails, they should identify the defective layer and make the smallest logical
 fix there: the installer for installer behavior, a patch against the CPAN
 release for distribution behavior, or the XPerl checkout for an interpreter
