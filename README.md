@@ -158,6 +158,17 @@ receipt and reason, and the command exits non-zero if any of them failed.
 receipt and prerequisites. Receipts record each phase's start and finish
 times.
 
+## Phase timeout
+
+Each configure, build, test, and install phase has a time limit: by default
+3600 seconds. `--phase-timeout SECONDS` (or `phase_timeout` in the
+`[install]` table) changes it, and `0` removes it. A phase that runs longer is
+stopped together with every process it started, because on Unix-like hosts
+each phase runs in its own process group. It is reported as "PHASE timed out
+after N seconds", and its receipt marks the phase `timed_out`. This keeps one
+hung test, for example a test that runs a command which waits on its input,
+from stalling a long or parallel run.
+
 ## Optional repair command
 
 `--repair-command PATH` or `--agent NAME` enables an external repair program after a failed
