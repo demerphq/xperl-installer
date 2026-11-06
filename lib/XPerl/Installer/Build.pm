@@ -16,6 +16,7 @@ use IPC::Open3;
 use JSON::PP;
 use Symbol qw(gensym);
 use Time::HiRes qw(time);
+use XPerl::Installer::Platform;
 use XPerl::Installer::Proposal;
 
 sub new ($class, %args) {
@@ -60,6 +61,7 @@ sub install ($self, $release, %options) {
         prefix        => $self->{prefix},
         xperl         => abs_path($^X),
         xperl_version => "$^V",
+        platform      => XPerl::Installer::Platform::current(),
         workdir       => $work,
         phases        => [],
     };

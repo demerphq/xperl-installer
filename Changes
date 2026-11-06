@@ -2,6 +2,8 @@ Unreleased
     Rebuild from clean sources after an external repair, so make programs
     with one-second timestamps cannot test stale build products.
     Tests compare canonical paths and pass on macOS.
+    Receipts record the platform: operating system, architecture name,
+    compiler, make program, thread support, and XPerl commit.
 
 0.002  2026-11-06
     Add TOML configuration and named external repair agent profiles.
