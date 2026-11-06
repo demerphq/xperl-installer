@@ -28,11 +28,13 @@ Usage: xperl resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Na
                      [--repair-limit N] [--repair-jobs K]
                      [--jobs K] [--phase-timeout SECONDS]
                      [--native-prefix DIR]... [--no-native-prefix]
+                     [--layout auto|site|install_base]
                      [--mirror URL|DIR] [--cache DIR] [--workdir DIR] Module::Name...
        xperl install-ported --registry DIR [--config FILE] [--prefix DIR]
                      [--dry-run] [--json] [--resume] [--jobs K]
                      [--phase-timeout SECONDS]
                      [--native-prefix DIR]... [--no-native-prefix]
+                     [--layout auto|site|install_base]
                      [--only AUTHOR/Dist]... [--exclude AUTHOR/Dist]...
                      [--agent NAME | --repair-command PATH]
                      [--repair-jobs K]
@@ -52,6 +54,10 @@ every process it started, after that many seconds (default 3600; 0 disables).
 compiler, linker and pkg-config search paths of builds. Without it, the
 Homebrew installation is used (HOMEBREW_PREFIX, or on macOS /opt/homebrew or
 /usr/local). --no-native-prefix adds none.
+--layout chooses where modules go. site installs into the interpreter's own
+site library, which its @INC searches. install_base installs under
+PREFIX/lib/perl5, which needs PERL5LIB. auto (the default) uses site when
+PREFIX is the interpreter's own prefix, and install_base otherwise.
 USAGE
 }
 
@@ -59,7 +65,8 @@ my $action = shift @ARGV // 'help';
 my ($config_path, $agent, $mirror, $cache, $workdir, $refresh, $prefix,
     $registry, $repair_command, $repair_attempts, $repair_timeout, $repair_limit,
     $dry_run, $as_json, $resume, @only, @exclude, $jobs, $from, $phase_timeout,
-    @native_prefixes, $no_native_prefix, $repair_jobs);
+    @native_prefixes, $no_native_prefix, $repair_jobs,
+    $layout);
 GetOptionsFromArray(
     \@ARGV,
     'config=s' => \$config_path,
@@ -84,6 +91,7 @@ GetOptionsFromArray(
     'phase-timeout=i' => \$phase_timeout,
     'native-prefix=s' => \@native_prefixes,
     'no-native-prefix' => \$no_native_prefix,
+    'layout=s' => \$layout,
     'from=s' => \$from,
 ) or die usage();
 
@@ -98,6 +106,7 @@ $registry //= $defaults->{registry};
 $jobs     //= $defaults->{jobs} // 4;
 $phase_timeout //= $defaults->{phase_timeout};
 $repair_jobs //= $defaults->{repair_jobs} // 1;
+$layout //= $defaults->{layout};
 die "--native-prefix and --no-native-prefix cannot be combined\n"
     if @native_prefixes && $no_native_prefix;
 @native_prefixes = $no_native_prefix ? ()
@@ -153,6 +162,7 @@ sub builder ($ports) {
         (defined $repair_timeout ? (repair_timeout => $repair_timeout) : ()),
         (defined $phase_timeout ? (phase_timeout => $phase_timeout) : ()),
         native_prefixes => [@native_prefixes],
+        (defined $layout ? (layout => $layout) : ()),
     );
 }
 

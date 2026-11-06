@@ -1,4 +1,9 @@
 Unreleased
+    install --prefix set to the interpreter's own prefix installs into its
+    site library, which @INC already searches, instead of PREFIX/lib/perl5.
+    --layout auto|site|install_base (or install.layout) chooses explicitly;
+    other prefixes keep the INSTALL_BASE layout. Receipts record the layout
+    and any older copy under PREFIX/lib/perl5 that would hide the new one.
     Failed releases enter a repair queue while independent builds continue.
     --repair-jobs controls repair workers separately from --jobs; batches
     default to four build workers and one repair worker.

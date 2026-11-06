@@ -185,9 +185,8 @@ sub _install_prereqs ($self, $meta) {
 }
 
 sub _satisfied ($self, $module) {
-    my $prefix = $self->{builder}->{prefix};
-    my $site = File::Spec->catdir($prefix, 'lib', 'perl5');
-    my @inc = ($site, File::Spec->catdir($site, $Config{archname}), @INC);
+    my ($site, $arch) = $self->{builder}->library_dirs;
+    my @inc = ($site, $arch, @INC);
     my $metadata = Module::Metadata->new_from_module($module, inc => \@inc);
     my $version = $metadata ? $metadata->version // '0'
         : $self->{provided}{$module};
@@ -197,7 +196,7 @@ sub _satisfied ($self, $module) {
 }
 
 sub _remember_provides ($self, $meta) {
-    my $site = File::Spec->catdir($self->{builder}->{prefix}, 'lib', 'perl5');
+    my ($site, $arch) = $self->{builder}->library_dirs;
     my $provides = $meta->provides;
     for my $module (keys %$provides) {
         my $entry = $provides->{$module};
@@ -205,7 +204,7 @@ sub _remember_provides ($self, $meta) {
         next unless $file =~ m{\Alib/([A-Za-z0-9_]+(?:/[A-Za-z0-9_]+)*\.pm)\z};
         my @parts = split m{/}, $1;
         next unless -f File::Spec->catfile($site, @parts)
-            || -f File::Spec->catfile($site, $Config{archname}, @parts);
+            || -f File::Spec->catfile($arch, @parts);
         $self->{provided}{$module} = $entry->{version} // '0';
     }
 }
