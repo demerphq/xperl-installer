@@ -186,8 +186,10 @@ sub status_records ($self) {
                     $self->directory_for($status->{author},
                                          $status->{distribution}),
                     'status.json');
+                # abs_path is undefined for a placement that does not exist.
+                my $placed = abs_path($expected);
                 die "record is not at its placement ($expected)\n"
-                    unless abs_path($path) eq abs_path($expected);
+                    unless defined $placed && abs_path($path) eq $placed;
                 my $key = "$status->{author}/$status->{distribution}";
                 die "duplicate status record for $key\n" if $seen{$key}++;
                 { key => $key, path => abs_path($path), %$status };
