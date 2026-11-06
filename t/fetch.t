@@ -85,4 +85,27 @@ eval { $fetcher->resolve('Example::Tiny', refresh => 1) };
 like($@, qr/unsafe or unsupported CPAN release path/,
      'rejects path traversal from CPAN metadata');
 
+# The package index is parsed once per fetcher, not once per lookup, and is
+# read again on refresh or when the cached file changes.
+$index =~ s{E/EX/EXAMPLE/\.\./escape\.tar\.gz}{E/EX/EXAMPLE/Example-Tiny-1.00.tar.gz};
+gzip \$index => File::Spec->catfile($index_dir, '02packages.details.txt.gz')
+    or die $GzipError;
+my $once_cache = File::Spec->catdir($root, 'once-cache');
+my $once = XPerl::Installer::Fetch->new(mirror => $mirror, cache => $once_cache);
+is($once->resolve('Example::Tiny')->{version}, '1.00', 'first lookup reads the index');
+my $cached_index = File::Spec->catfile($once_cache, '02packages.details.txt.gz');
+my @stat = stat $cached_index;
+open my $truncate, '>', $cached_index or die $!;
+close $truncate or die $!;
+utime $stat[8], $stat[9], $cached_index or die $!;
+is(eval { $once->resolve('Example::Tiny')->{version} }, '1.00',
+   'later lookups use the index already in memory');
+(my $newer = $index) =~ s/Example::Tiny\s+1\.00/Example::Tiny 1.01/;
+gzip \$newer => $cached_index or die $GzipError;
+utime $stat[8], $stat[9] + 10, $cached_index or die $!;
+is($once->resolve('Example::Tiny')->{version}, '1.01',
+   'a changed index file is read again');
+is($once->resolve('Example::Tiny', refresh => 1)->{version}, '1.00',
+   'refresh downloads and reads the index again');
+
 done_testing();

@@ -1,4 +1,6 @@
 Unreleased
+    The CPAN package index is parsed once per run instead of once per
+    lookup, which makes resolving many modules much faster.
     install accepts several modules or --from FILE and keeps going past
     failures, reporting the outcome of each requested module.
     install-ported accepts --jobs K and builds the selected releases with
