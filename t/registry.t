@@ -120,4 +120,25 @@ is(scalar @{$sharded_registry->patches_for({
     %$release, cpan_path => 'B/BO/BOB/Example-Tiny-1.00.tar.gz'
 })->{patches}}, 0, 'does not use another author\'s patches');
 
+# A status record outside its placement is reported as invalid, quietly,
+# even when nothing exists at the placement it should have.
+my $misplaced = File::Spec->catdir($sharded, qw(data zz EXAMPLE Misplaced));
+make_path($misplaced);
+open my $misplaced_status, '>', File::Spec->catfile($misplaced, 'status.json')
+    or die $!;
+print {$misplaced_status} JSON::PP->new->encode({
+    schema => 2, author => 'EXAMPLE', distribution => 'Misplaced',
+    observations => [],
+});
+close $misplaced_status or die $!;
+my @warnings;
+my $records = do {
+    local $SIG{__WARN__} = sub { push @warnings, @_ };
+    $sharded_registry->status_records;
+};
+is(scalar @{$records->{invalid}}, 1, 'misplaced status record is invalid');
+like($records->{invalid}[0]{reason}, qr/not at its placement/,
+     'invalid record names the placement problem');
+is_deeply(\@warnings, [], 'checking placement emits no warnings');
+
 done_testing();
