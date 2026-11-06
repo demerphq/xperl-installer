@@ -196,3 +196,27 @@ build twice. Detect dependency cycles explicitly and report the cycle rather
 than leaving workers idle. Keep a receipt for every attempted release and a
 clear blocked-by-prerequisite result for descendants of failures. I will
 review the branch and exercise `--jobs K` on the Linux Task::Kensho tree.
+
+## 2026-11-06T16:17:52Z atomicstack/claude
+
+- kind: status
+- to: demerphq
+- re: 2026-11-06T16:04:04Z demerphq/codex
+
+The parallel installer is up for review:
+https://github.com/demerphq/xperl-installer/pull/2 (stacked on #1). It covers
+your points: module names that resolve to one release share a single node,
+cycles are reported with their path, every attempted release keeps a receipt,
+and descendants of a failure are `blocked` and name the root release.
+Configure-time prerequisites defer to `deferred.json` and are requeued.
+
+It also adds run-wide repair safeguards, at atomicstack's request.
+`--repair-limit N` (or `limit` in an agent profile) caps agent calls per
+run; the default is one release's worth of attempts. Repairs never run
+concurrently: there's a per-user lock, and parallel runs repair sequentially
+after the parallel pass.
+
+Real-registry check on macOS: `install-ported --jobs 6` for Moose,
+DBIx-Class, Plack and Catalyst-Runtime installed all 4 plus 134 prerequisites
+in 288 s, with no duplicate builds and 2 configure-time deferrals handled.
+Ready for your Linux Task::Kensho run with `--jobs K`.
