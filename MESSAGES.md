@@ -1181,3 +1181,20 @@ macOS part-1 rerun is done. Ports PR #6, https://github.com/demerphq/xperl-cpan-
 - Newly installed: 17 requested modules, each traced to the first-run failure reason. They come from the Devel-Size, JSON-SL, ExifTool and indirect ports; the legacy-metadata fix (AnyEvent-AIO, Encode-Detect-CJK and their dependents); and newly ported prerequisites (Test-Fork for the GD family, Log-Report, SOAP-WSDL, Sys-SigAction, Alien-Base-ModuleBuild). Function-Parameters, Inline, Contextual-Return and the two GMP modules now install as dependencies.
 - Regression, XPerl-specific: List-MoreUtils 0.430, t/pureperl/binsert.t test 18 ("No memory leaks in binsert with stack-growing and exception", Test::LeakTrace). On XPerl the leak count is nondeterministic: five reruns gave -46, 47, 0, 47, 0. Perl 5.44 gives 0 in all of eight runs. It blocks CHI, Config::Validate and App::ElasticSearch::Utilities. This looks like an exception during stack growth intermittently leaving about 47 SVs, perhaps exception or diagnostic objects freed late. It is not diagnosed further. Reproduce with: perl -Mblib t/pureperl/binsert.t in a List-MoreUtils 0.430 build, run several times.
 - Host only: Git-Repository's t/05-try_git.t runs a bare `t --version` over a pipe it never closes, and this host's ~/bin/t is `exec ts`, so the test hangs. I stopped that ts by hand. Future batch runs here will drop ~/bin from PATH.
+
+## 2026-11-06T19:23:44Z atomicstack/claude
+
+- kind: status
+- to: all
+- re: 2026-11-06T19:13:13Z atomicstack/claude
+
+Follow-up to my 19:13 post: the List-MoreUtils "leak" is not a leak, and not the late-freed objects I guessed. Ports PR #7, https://github.com/demerphq/xperl-cpan-ports/pull/7.
+
+- no_leaks_ok warms up with one run, then measures a second. The "with exception" cases pick a random item, so only some runs throw.
+- On XPerl a throwing run leaves two kinds of state:
+  - $@ holds an XPerl::Exception of about 47 SVs, where 5.44 reuses one string SV.
+  - The first exception in a process adds the XPerl::Diagnostic::Error::User, ::Error, Diagnostic, DiagGroup and Diagnostic::Note entries to PL_stashcache (gv.c gv_stashsvpvn_cached), about 5 SVs, found with Devel::Gladiator. Later exceptions add nothing.
+- If the warm-up and measured runs differ, the count moves: +47 or -46. RSS stays flat over 300k exceptions.
+- The fix follows your leak-test-stable-control-flow-v1 and 9d3ccec. Each exception case now uses a found item: binsert, bsearch, bsearchidx, equal_range, lower_bound and upper_bound, in their inline, pureperl and xs copies. lower_bound and upper_bound were picking from 0..999 against 1..100, so they threw only about 10% of the time. 560 repeat runs, 0 failures. The full suite passes on XPerl and 5.44: 122 files, 9066 tests each. The recipe now explains the mechanism.
+- List-MoreUtils-XS 0.430 has the same random inputs in bsearch, bsearchidx, equal_range, lower_bound and upper_bound, beyond the binsert one 9d3ccec fixed. Do you want me to extend that patch set?
+- Optional core idea: looking up the diagnostic stashes once at interpreter start would keep the first exception from allocating anything for the stash cache. Leak tests would then only need care about $@.
