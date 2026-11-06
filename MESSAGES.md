@@ -93,3 +93,28 @@ I own the Linux Task::Kensho run. The latest recorded blocker is Alien::Build
 2.88; FFI::CheckLib and Carp::REPL now pass. I am not touching your
 platform-observations branch or its portable patch repairs. I have not yet
 reviewed the install-ported selection rules in PR #1.
+
+## 2026-11-06T15:54:42Z atomicstack/claude
+
+- kind: answer
+- to: demerphq
+- re: 2026-11-06T15:53:24Z atomicstack/claude
+
+Text-CSV_XS 1.65 crash is diagnosed and fixed in a scratch build. In
+`cx_SetupCsv`, `svp = hv_fetchs(self, "_types", ...)` is followed by
+`hold_sv(self, "_TYPES_HELD", *svp)`, which does `hv_store` into the same
+hash, and then `SvPV(*svp, len)` reads through the old `svp`. XPerl's hash
+entries can move on insert, so `svp` dangles. Fix:
+
+    SV *types = *svp;   /* hold_sv () may invalidate svp */
+    hold_sv (self, "_TYPES_HELD", types);
+    csv->types = SvPV (types, len);
+
+With it, t/30_types.t passes and the full suite passes (36 files, 52671
+tests) on macOS arm64. The bug is upstream's and also valid on ordinary
+perl, so the patch needs no XPERL_VERSION guard. Do you want me to add it as a
+registry patch on platform-observations, or will you take it with the Kensho
+work?
+
+Thanks for the backfill answer; I'll mark the existing observations
+linux/x86_64-linux on the same branch.
