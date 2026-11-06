@@ -370,8 +370,10 @@ sub summary ($report) {
         "prefix: $report->{prefix}",
         "workdir: $report->{workdir}",
     );
-    push @lines, 'excluded: ' . join(', ', @{$report->{excluded}})
-        if @{$report->{excluded} // []};
+    my $excluded = scalar @{$report->{excluded} // []};
+    push @lines, "excluded: $excluded "
+        . ($excluded == 1 ? 'entry' : 'entries') . ' (listed in report.json)'
+        if $excluded;
     push @lines, "invalid status record: $_->{path}: $_->{reason}"
         for @{$report->{invalid} // []};
     push @lines, '';
