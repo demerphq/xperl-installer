@@ -13,8 +13,8 @@ use XPerl::Installer::Registry;
 use builtin qw(siphash_2_4);
 no warnings 'experimental::builtin';
 
-my $root = tempdir(CLEANUP => 1,
-                   DIR => $ENV{XPERL_TEST_TMPDIR} // File::Spec->tmpdir);
+my $root = abs_path(tempdir(CLEANUP => 1,
+                   DIR => $ENV{XPERL_TEST_TMPDIR} // File::Spec->tmpdir));
 my $dist = File::Spec->catdir($root, qw(distributions Example-Tiny));
 my $patch_dir = File::Spec->catdir($dist, 'patches');
 my $recipe_dir = File::Spec->catdir($root, 'recipes');
@@ -77,8 +77,8 @@ close $patch or die $!;
 eval { $registry->patches_for($release) };
 like($@, qr/patch digest mismatch/, 'rejects a modified patch');
 
-my $sharded = tempdir(CLEANUP => 1,
-                      DIR => $ENV{XPERL_TEST_TMPDIR} // File::Spec->tmpdir);
+my $sharded = abs_path(tempdir(CLEANUP => 1,
+                      DIR => $ENV{XPERL_TEST_TMPDIR} // File::Spec->tmpdir));
 my $config = {
     schema => 2,
     active_repositories => 1,

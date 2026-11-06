@@ -1,14 +1,15 @@
 use strict;
 use warnings;
 use FindBin;
+use Cwd qw(abs_path);
 use lib "$FindBin::Bin/../lib";
 use File::Spec;
 use File::Temp qw(tempdir);
 use Test::More;
 use XPerl::Installer::Config;
 
-my $root = tempdir(CLEANUP => 1,
-                   DIR => $ENV{XPERL_TEST_TMPDIR} // File::Spec->tmpdir);
+my $root = abs_path(tempdir(CLEANUP => 1,
+                   DIR => $ENV{XPERL_TEST_TMPDIR} // File::Spec->tmpdir));
 my $path = File::Spec->catfile($root, 'installer.toml');
 open my $output, '>:raw', $path or die $!;
 print {$output} <<'TOML';
