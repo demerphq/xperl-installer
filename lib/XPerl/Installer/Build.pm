@@ -550,9 +550,11 @@ sub _unpack ($archive, $work) {
 }
 
 sub _unpack_zip ($archive, $work) {
+    my $modes = _zip_modes($archive);
     my $zip = IO::Uncompress::Unzip->new($archive)
         or die "cannot read $archive: $IO::Uncompress::Unzip::UnzipError\n";
     my %roots;
+    my @permissions;
     my $next;
     do {
         my $name = $zip->getHeaderInfo->{Name};
@@ -580,13 +582,61 @@ sub _unpack_zip ($archive, $work) {
             }
             close $out or die "cannot close $target: $!\n";
         }
+        push @permissions, [$target, $modes->{$name}]
+            if defined $modes->{$name};
         $next = $zip->nextStream;
     } while ($next > 0);
     die "cannot read $archive: $IO::Uncompress::Unzip::UnzipError\n"
         if $next < 0;
     die "archive has multiple source roots\n" unless keys(%roots) == 1;
+    for my $entry (@permissions) {
+        my ($path, $mode) = @$entry;
+        chmod($mode, $path) == 1
+            or die "cannot set permissions on $path: $!\n";
+    }
     my ($root) = keys %roots;
     return File::Spec->catdir($work, $root);
+}
+
+# ZIP local headers omit Unix modes. Read them from the central directory
+# after extracting, so a script stays executable without an external unzip.
+sub _zip_modes ($archive) {
+    open my $input, '<:raw', $archive or die "cannot read $archive: $!\n";
+    seek $input, 0, 2 or die "cannot seek $archive: $!\n";
+    my $size = tell $input;
+    my $tail_size = $size < 65557 ? $size : 65557;
+    seek $input, -$tail_size, 2 or die "cannot seek $archive: $!\n";
+    read($input, my $tail, $tail_size) == $tail_size
+        or die "cannot read ZIP directory in $archive\n";
+    my $end = rindex($tail, "PK\x05\x06");
+    die "cannot find ZIP directory in $archive\n"
+        if $end < 0 || length($tail) - $end < 22;
+    my $count = unpack('v', substr($tail, $end + 10, 2));
+    my $offset = unpack('V', substr($tail, $end + 16, 4));
+    # ZIP64 archives can be extracted, but this small reader cannot recover
+    # their Unix modes from the extended directory offset.
+    return {} if $count == 0xffff || $offset == 0xffffffff;
+    seek $input, $offset, 0 or die "cannot seek ZIP directory: $!\n";
+
+    my %modes;
+    for (1 .. $count) {
+        my $header;
+        read($input, $header, 46) == 46
+            && substr($header, 0, 4) eq "PK\x01\x02"
+            or die "invalid ZIP directory in $archive\n";
+        my $host = ord(substr($header, 5, 1));
+        my ($name_size, $extra_size, $comment_size) =
+            unpack('v3', substr($header, 28, 6));
+        read($input, my $name, $name_size) == $name_size
+            or die "invalid ZIP filename in $archive\n";
+        seek $input, $extra_size + $comment_size, 1
+            or die "cannot seek ZIP directory: $!\n";
+        next unless $host == 3 || $host == 19;
+        my $attributes = unpack('V', substr($header, 38, 4));
+        $modes{$name} = ($attributes >> 16) & 0777;
+    }
+    close $input or die "cannot close $archive: $!\n";
+    return \%modes;
 }
 
 sub _run ($self, $source, $log_path, @command) {

@@ -128,6 +128,10 @@ print {$zip} "package Example::Zipped;\nour \$VERSION = '1.00';\n1;\n"
 $zip->newStream(Name => 'Example-Zipped-1.00/META.json')
     or die $IO::Compress::Zip::ZipError;
 print {$zip} '{"name":"Example-Zipped","version":"1.00"}' or die $!;
+$zip->newStream(Name => 'Example-Zipped-1.00/bin/probe',
+                ExtAttr => 0100755 << 16)
+    or die $IO::Compress::Zip::ZipError;
+print {$zip} "#!/usr/bin/env perl\nprint qq(probe\\n);\n" or die $!;
 $zip->close or die $IO::Compress::Zip::ZipError;
 
 my $zip_release = $fetcher->fetch('Example::Zipped');
@@ -137,5 +141,8 @@ my $zip_receipt = $builder->install($zip_release);
 is($zip_receipt->{status}, 'installed', 'ZIP release installs successfully');
 ok(-f File::Spec->catfile($bad_prefix, qw(lib perl5 Example Zipped.pm)),
    'ZIP module installed into the selected prefix');
+ok(-x File::Spec->catfile($zip_receipt->{workdir},
+                         'Example-Zipped-1.00', 'bin', 'probe'),
+   'ZIP extraction preserves an executable Unix mode');
 
 done_testing();
