@@ -109,6 +109,11 @@ record('EXAMPLE', 'Patched', '1.00', value => 0, patch_set => 'fix');
 record('OTHER', 'Patched', '1.00', module => 'Other::Patched', indexed => 0);
 record('EXAMPLE', 'Broken', '1.00', value => 0);
 record('EXAMPLE', 'NeedsBroken', '1.00', requires => { 'Example::Broken' => '0' });
+# A parent processed before its broken prerequisite, and a dependent of it:
+# the failure belongs to the prerequisite, not the parent.
+record('EXAMPLE', 'Alpha', '1.00', requires => { 'Example::Omega' => '0' });
+record('EXAMPLE', 'Beta', '1.00', requires => { 'Example::Alpha' => '0' });
+record('EXAMPLE', 'Omega', '1.00', value => 0);
 record('EXAMPLE', 'CycleA', '1.00', requires => { 'Example::CycleB' => '0' });
 record('EXAMPLE', 'CycleB', '1.00', requires => { 'Example::CycleA' => '0' });
 # The archive on the mirror no longer matches the recorded hash.
@@ -202,7 +207,8 @@ my $plan = eval { JSON::PP->new->decode($output) } // {};
 my $planned = by_key($plan);
 is_deeply([sort keys %$planned],
           [sort((map { "EXAMPLE/$_" } qw(App Base Broken Changed CycleA CycleB
-                                         Gone Multi NeedsBroken Patched Tool)),
+                                         Gone Multi NeedsBroken Patched Tool
+                                         Alpha Beta Omega)),
                 'OTHER/Patched')],
           'selects one release for every recorded success')
     or diag explain [sort keys %$planned];
@@ -249,6 +255,15 @@ is($entry->{'EXAMPLE/Broken'}{failed_phase}, 'test', 'report names the failed ph
 ok(-f $entry->{'EXAMPLE/Broken'}{receipt}, 'failed release keeps its receipt');
 like($entry->{'EXAMPLE/NeedsBroken'}{reason}, qr/dependency failed: .*Broken-1\.00/,
      'a dependent of a failed release fails without rebuilding it');
+like($entry->{'EXAMPLE/Alpha'}{reason}, qr/\Adependency failed: \S*Omega-1\.00/,
+     'a parent is not blamed for its prerequisite\'s failure');
+ok(!defined $entry->{'EXAMPLE/Alpha'}{receipt},
+   'a parent that was never built has no receipt of its own');
+like($entry->{'EXAMPLE/Beta'}{reason}, qr/Omega-1\.00/,
+     'a dependent names the release that actually failed');
+unlike($entry->{'EXAMPLE/Beta'}{reason}, qr/Alpha-1\.00: test failed/,
+       'a dependent does not report the parent as failing its tests');
+is($entry->{'EXAMPLE/Omega'}{status}, 'failed', 'the broken prerequisite fails');
 like($entry->{'EXAMPLE/CycleA'}{reason}, qr/dependency cycle/, 'cycle is reported');
 like($entry->{'EXAMPLE/CycleB'}{reason}, qr/dependency cycle/,
      'both members of the cycle fail');
@@ -265,7 +280,7 @@ ok(-f File::Spec->catfile($prefix, qw(lib perl5 Example App.pm)),
 is($report->{platform}{key}, "$^O/$Config{archname}", 'report records the platform');
 is($report->{xperl}{version}, "$^V", 'report records the XPerl version');
 is($report->{counts}{installed}, 5, 'report counts installed entries');
-is($report->{counts}{failed}, 4, 'report counts failed entries');
+is($report->{counts}{failed}, 7, 'report counts failed entries');
 is($report->{counts}{skipped}, 2, 'report counts skipped entries');
 for my $name (qw(report.json summary.txt state.json)) {
     ok(-f File::Spec->catfile($workdir, 'install-ported', $name), "$name written");
@@ -282,8 +297,8 @@ ok($resumed->{'EXAMPLE/App'}{resumed}, 'resume keeps an earlier success');
 is($resumed->{'EXAMPLE/App'}{status}, 'installed', 'resumed success stays installed');
 is($resumed->{'EXAMPLE/Broken'}{status}, 'failed', 'resume retries an earlier failure');
 ok(!$resumed->{'EXAMPLE/Broken'}{resumed}, 'a failure is never carried over');
-is(releases_built($workdir) - $built_before, 1,
-   'resume rebuilt only the failed release');
+is(releases_built($workdir) - $built_before, 2,
+   'resume rebuilt only the failed releases');
 
 # --- the other author, in a fresh prefix ----------------------------------
 my $other_prefix = File::Spec->catdir($root, 'other-prefix');
@@ -298,7 +313,7 @@ my $other_summary = do {
         or die $!;
     local $/; <$in>;
 };
-like($other_summary, qr/^excluded: 11 entries/m,
+like($other_summary, qr/^excluded: 14 entries/m,
      'the readable summary counts excluded entries');
 unlike($other_summary, qr{EXAMPLE/App}, 'excluded entries are not listed one by one');
 
