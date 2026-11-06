@@ -365,8 +365,12 @@ sub install ($self, $release, %options) {
                 die "repair failed (exit $repair_status); see $repair_log\n"
                     if $repair_status;
                 my $after_files = XPerl::Installer::Proposal::files($source);
-                $new_files{$_} = 1 for grep { !$before_files->{$_} }
-                    keys %$after_files;
+                my $manifest = XPerl::Installer::Proposal->manifest_files($source);
+                $new_files{$_} = 1 for grep {
+                    !$before_files->{$_}
+                        && XPerl::Installer::Proposal
+                            ->patchable_new_file($source, $_, $manifest)
+                } keys %$after_files;
                 my $after_source = XPerl::Installer::Proposal
                     ->source_fingerprint(original => $original,
                                          source => $source,

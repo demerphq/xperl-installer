@@ -1,4 +1,7 @@
 Unreleased
+    Exclude generated objects and test scratch files from AI patch proposals,
+    so an agent that rebuilds a distribution cannot make proposal generation
+    fail on binary or unrecognized temporary files.
     AI repairs allow four attempts per release by default and start at least
     ten seconds apart across installer processes. --repair-limit is an
     optional run-wide cap, not a default that stops the batch after one

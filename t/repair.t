@@ -81,6 +81,14 @@ my $added = File::Spec->catfile($request->{source},
 open my $extra, '>', $added or die $!;
 print {$extra} "package Example::Added;\n1;\n";
 close $extra or die $!;
+my $object = File::Spec->catfile($request->{source}, 'Attribute.o');
+open my $built, '>:raw', $object or die $!;
+print {$built} "\0compiled object\0";
+close $built or die $!;
+my $scratch = File::Spec->catfile($request->{source}, 'tmp2');
+open my $temporary, '>', $scratch or die $!;
+print {$temporary} "test scratch output\n";
+close $temporary or die $!;
 AGENT
 close $agent_file or die $!;
 chmod 0755, $agent or die $!;
@@ -119,6 +127,8 @@ like($patch, qr/^\+\+\+ b\/lib\/Example\/Added\.pm$/m,
      'patch contains agent-added source file');
 unlike($patch, qr/^\+\+\+ b\/(?:Makefile|blib\/)/m,
        'patch excludes generated build products');
+unlike($patch, qr/Attribute\.o/, 'patch excludes an agent-built object file');
+unlike($patch, qr/tmp2/, 'patch excludes a test scratch file');
 open my $request_file, '<', $ENV{XPERL_REPAIR_MARKER} or die $!;
 my $request = JSON::PP->new->decode(do { local $/; <$request_file> });
 is($request->{failed_phase}, 'test', 'agent received failed phase');
