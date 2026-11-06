@@ -1,4 +1,7 @@
 Unreleased
+    Load an installed module in a child interpreter when static metadata
+    cannot evaluate its version. This lets Thrift's modules use their shared
+    runtime version for both versioned and unversioned prerequisites.
     Repair agents can return an undeclared CPAN prerequisite for the scheduler
     to install before retrying the release. Their response file now lives in
     the source directory, where a restricted agent can write it.

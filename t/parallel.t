@@ -117,6 +117,7 @@ release('Twins', requires => [qw(ViaTwin ViaExtra)]);
                  "Example::Internal undef E/EX/EXAMPLE/$dist.tar.gz";
 }
 release('UsesInternal', requires => ['Internal']);
+release('UsesDynamicVersion', requires => ['DynamicVersion>=v1.20.0']);
 
 my $index = "File: 02packages.details.txt\n\n" . join("\n", sort @index) . "\n";
 gzip \$index => File::Spec->catfile($mirror, 'modules', '02packages.details.txt.gz')
@@ -171,6 +172,40 @@ ok(phase($built->{Pair}, 'configure')->{started}
        >= max(map { phase($built->{$_}, 'install')->{finished} } qw(SlowA SlowB)),
    'a release starts only after its prerequisites are installed');
 ok(-f File::Spec->catfile($prefix, qw(lib perl5 Example Pair.pm)), 'module installed');
+
+# An installed module may take its version from another package. Metadata
+# cannot evaluate that declaration alone, so the installer loads the module
+# in a child interpreter to check a versioned prerequisite.
+my $dynamic_prefix = File::Spec->catdir($root, 'dynamic-version-prefix');
+my $dynamic_lib = File::Spec->catdir($dynamic_prefix, qw(lib perl5 Example));
+make_path($dynamic_lib);
+for my $file (
+    ['Shared.pm', "package Example::Shared; our \$VERSION = '1.25'; 1;\n"],
+    ['DynamicVersion.pm', "package Example::DynamicVersion; use Example::Shared; use version; our \$VERSION = version->declare(\"\$Example::Shared::VERSION\"); 1;\n"],
+) {
+    open my $out, '>', File::Spec->catfile($dynamic_lib, $file->[0]) or die $!;
+    print {$out} $file->[1];
+    close $out or die $!;
+}
+for my $jobs (1, 2) {
+    open my $pipe, '-|', $^X, $script, 'install', '--mirror', $mirror,
+        '--cache', $cache, '--prefix', $dynamic_prefix, '--jobs', $jobs,
+        '--workdir', File::Spec->catdir($root, "dynamic-version-work-$jobs"),
+        'Example::DynamicVersion' or die $!;
+    my $output = do { local $/; <$pipe> };
+    ok(close $pipe, "job count $jobs accepts an installed dynamic version");
+    is(JSON::PP->new->decode($output)->{status}, 'installed',
+       "job count $jobs skips the already installed module");
+
+    open my $dependent, '-|', $^X, $script, 'install', '--mirror', $mirror,
+        '--cache', $cache, '--prefix', $dynamic_prefix, '--jobs', $jobs,
+        '--workdir', File::Spec->catdir($root, "dynamic-dependent-work-$jobs"),
+        'Example::UsesDynamicVersion' or die $!;
+    my $dependent_output = do { local $/; <$dependent> };
+    ok(close $dependent, "job count $jobs accepts the runtime version");
+    is(JSON::PP->new->decode($dependent_output)->{status}, 'installed',
+       "job count $jobs installs the dependent");
+}
 
 # A shared prerequisite is built once.
 ($status, $result, $prefix, $work) = install('Example::Top', '--jobs', 3);

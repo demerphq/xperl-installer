@@ -557,9 +557,8 @@ sub _record_repair ($self, $node, $outcome) {
 sub _available ($self, $module, $range) {
     my ($site, $arch) = $self->{builder}->library_dirs;
     my @inc = ($site, $arch, @INC);
-    my $metadata = Module::Metadata->new_from_module($module, inc => \@inc);
-    my $version = $metadata ? $metadata->version // '0'
-        : $self->_declared_version($module, $site, $arch);
+    my $version = XPerl::Installer::Deps::_installed_version($module, \@inc)
+        // $self->_declared_version($module, $site, $arch);
     return 0 unless defined $version;
     return _accepts($module, $range, $version);
 }

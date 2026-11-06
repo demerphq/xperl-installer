@@ -187,12 +187,41 @@ sub _install_prereqs ($self, $meta) {
 sub _satisfied ($self, $module) {
     my ($site, $arch) = $self->{builder}->library_dirs;
     my @inc = ($site, $arch, @INC);
-    my $metadata = Module::Metadata->new_from_module($module, inc => \@inc);
-    my $version = $metadata ? $metadata->version // '0'
-        : $self->{provided}{$module};
+    my $version = _installed_version($module, \@inc)
+        // $self->{provided}{$module};
     return 0 unless defined $version;
     return $self->{needed}->accepts_module($module,
                                            $version);
+}
+
+# Static version extraction does not run a module's use statements. When its
+# version depends on another package, load it in a child interpreter instead
+# of running its initialization inside the installer process.
+sub _installed_version ($module, $inc) {
+    my $metadata = eval {
+        Module::Metadata->new_from_module($module, inc => $inc)
+    };
+    return unless $metadata || $@;
+    my $version = $metadata ? eval { $metadata->version } : undef;
+    return $version if defined $version;
+
+    return '0' unless $module =~ /\A[A-Za-z_][A-Za-z_0-9]*(?:::[A-Za-z_0-9]+)*\z/;
+    my @include = map { "-I$_" } grep { !ref($_) && -d $_ } @$inc;
+    my $program = <<'PERL';
+my $module = shift;
+(my $file = $module) =~ s{::}{/}g;
+eval { require "$file.pm"; 1 } or exit 1;
+no strict 'refs';
+my $version = ${"${module}::VERSION"};
+exit 1 unless defined $version;
+print "\n__XPERL_VERSION__=$version\n";
+PERL
+    open my $pipe, '-|', $^X, @include, '-e', $program, $module
+        or return '0';
+    my $output = do { local $/; <$pipe> };
+    return '0' unless close $pipe;
+    my ($loaded) = $output =~ /__XPERL_VERSION__=([^\r\n]+)\r?\n?\z/;
+    return $loaded // '0';
 }
 
 sub _remember_provides ($self, $meta) {
