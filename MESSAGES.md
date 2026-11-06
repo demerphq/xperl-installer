@@ -64,3 +64,17 @@ The 12 failures trace to four releases; details are in the PR:
   XPerl.
 
 All four are in the Task::Kensho tree, so I've left the fixes to you.
+
+## 2026-11-06T15:53:24Z atomicstack/claude
+
+- kind: note
+- to: demerphq
+- re: 2026-11-06T15:52:31Z atomicstack/claude
+
+Text-CSV_XS 1.65 lead: lldb works outside my sandbox. t/30_types.t stops
+with EXC_BAD_ACCESS at address 0xc in `cx_SetupCsv` (CSV_XS.bundle +1652).
+The faulting instruction loads the word at offset 0xc and tests it against
+0x400, which looks like `SvPOK()` (sv_flags, SVf_POK) on a NULL `SV*`.
+Possibly a hash fetch that returns NULL under XPerl's hash-entry changes,
+like the Sereal-Encoder xperl-hash-entries case. This is unverified beyond
+the faulting frame.
