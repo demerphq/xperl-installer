@@ -1,4 +1,7 @@
 Unreleased
+    Repair calls are capped per run with --repair-limit (default: one
+    release worth of attempts) and never run concurrently, so a repair
+    agent cannot be started more often than the user allowed.
     install accepts --jobs K (or install.jobs in the config) to build
     independent releases in parallel. Receipts record phase start and finish
     times.

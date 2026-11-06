@@ -23,6 +23,7 @@ Usage: xperl resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Na
        xperl install [--config FILE] [--prefix DIR] [--registry DIR]
                      [--agent NAME | --repair-command PATH]
                      [--repair-attempts N] [--repair-timeout SECONDS]
+                     [--repair-limit N]
                      [--jobs K]
                      [--mirror URL|DIR] [--cache DIR] [--workdir DIR] Module::Name
        xperl install-ported --registry DIR [--config FILE] [--prefix DIR]
@@ -40,7 +41,7 @@ USAGE
 
 my $action = shift @ARGV // 'help';
 my ($config_path, $agent, $mirror, $cache, $workdir, $refresh, $prefix,
-    $registry, $repair_command, $repair_attempts, $repair_timeout,
+    $registry, $repair_command, $repair_attempts, $repair_timeout, $repair_limit,
     $dry_run, $as_json, $resume, @only, @exclude, $jobs);
 GetOptionsFromArray(
     \@ARGV,
@@ -54,6 +55,7 @@ GetOptionsFromArray(
     'registry=s' => \$registry,
     'repair-command=s' => \$repair_command,
     'repair-attempts=i' => \$repair_attempts,
+    'repair-limit=i' => \$repair_limit,
     'repair-timeout=i' => \$repair_timeout,
     'dry-run' => \$dry_run,
     'json' => \$as_json,
@@ -81,6 +83,7 @@ if (defined $agent) {
         // die "unknown repair agent $agent in config\n";
     $repair_command = $profile->{command};
     $repair_attempts //= $profile->{attempts};
+    $repair_limit //= $profile->{limit};
     $repair_timeout //= $profile->{timeout};
 }
 
@@ -102,6 +105,7 @@ sub builder ($ports) {
         (defined $ports ? (registry => $ports) : ()),
         (defined $repair_command ? (repair_command => $repair_command) : ()),
         (defined $repair_attempts ? (repair_attempts => $repair_attempts) : ()),
+        (defined $repair_limit ? (repair_limit => $repair_limit) : ()),
         (defined $repair_timeout ? (repair_timeout => $repair_timeout) : ()),
     );
 }
