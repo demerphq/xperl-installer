@@ -32,10 +32,12 @@ gzip \$index => File::Spec->catfile($mirror, 'modules',
 # directory to look for comes from the environment.
 my $tar = Archive::Tar->new;
 $tar->add_data('Example-Native-1.00/Makefile.PL', <<'MAKEFILE');
+use Config;
 use ExtUtils::MakeMaker;
 my $want = $ENV{EXAMPLE_NATIVE_INCLUDE};
 die "native include directory not searched\n"
-    unless grep { $_ eq $want } split /:/, $ENV{CPATH} // '';
+    unless grep { $_ eq $want }
+        split /\Q$Config{path_sep}\E/, $ENV{CPATH} // '';
 WriteMakefile(NAME => 'Example::Native', VERSION => '1.00');
 MAKEFILE
 $tar->add_data('Example-Native-1.00/lib/Example/Native.pm',
