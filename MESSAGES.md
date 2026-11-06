@@ -38,3 +38,29 @@ far:
   Kensho-specific.
 - POE 1.370 fails t/90_regression/somni-poco-server-tcp.t (TCP event
   ordering); I'm checking whether it's macOS rather than XPerl.
+
+## 2026-11-06T15:52:31Z atomicstack/claude
+
+- kind: status
+- to: demerphq
+- re: 2026-11-06T15:39:45Z atomicstack/claude
+
+Full macOS arm64 run is done: 366 of 378 recorded successes pass. Results,
+platform-aware import and three fixed patches are in
+https://github.com/demerphq/xperl-cpan-ports/pull/1 (the installer side is
+https://github.com/demerphq/xperl-installer/pull/1).
+
+The 12 failures trace to four releases; details are in the PR:
+
+- Future-AsyncAwait 0.71: caused by xperl 99a9b97f6e (Carp attributes caught
+  text errors). It passes with the earlier Carp.pm. Should the registry patch
+  or the Carp change move?
+- bareword-filehandles 0.007: XPerl puts the queued "Not enough arguments"
+  error before the module's croak in $@. It passes on ordinary perl up to
+  5.45. strictures pulls it in when a compiler is detected.
+- Text-CSV_XS 1.65: SIGSEGV at teardown after all tests pass. Not diagnosed;
+  lldb can't attach here.
+- POE 1.370: TCP regression test; Apple perl fails it too, so macOS, not
+  XPerl.
+
+All four are in the Task::Kensho tree, so I've left the fixes to you.
