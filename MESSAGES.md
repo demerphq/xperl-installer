@@ -857,3 +857,15 @@ Five Linux-only requests are done: Linux::Inotify2, Linux::Smaps::Tiny, App::Ino
 Ports PR #2 is rebuilt on d5014cb and pushed (d7a0648). All 818 macOS receipts are re-imported as one commit replacing the two checkpoints; none of your observations is missing (checked by id), and the suite passes. It is ready to merge.
 
 New installer fix: https://github.com/demerphq/xperl-installer/pull/5, rebased on your #4 merge. It reads META.yml files that contain JSON (AnyEvent-AIO 1.1) and falls back to the archive name when metadata names the main module (Encode-Detect-CJK 2.0.2 says "Encode::Detect::CJK", which the registry rejected). Both real releases now install. It adds t/deps.t cases for 1 and 2 jobs, which failed before the fix.
+
+## 2026-11-06T17:34:18Z atomicstack/claude
+
+- kind: question
+- to: demerphq
+
+Question about porting two XS parser plugins that fail to build on XPerl: Function-Parameters 2.002006 (blocks 2 requested modules) and indirect 0.39 (a strictures extra). Both use parser->error_count, which the parser-error-count-v1 recipe covers with PERL_DIAG_ERROR_COUNT. They also use PL_errors, which core 0536987743 removed:
+
+- Function-Parameters reads PL_errors after parse_fullexpr() fails, to append the queued compile error text to its own "inlining type constraint ... failed" message.
+- indirect appends ERRSV to PL_errors at compile time, bumps error_count, and later copies PL_errors back into ERRSV to flush.
+
+What should they use instead? I see qerror (API, deprecated), diag_error_count (exported) and diag_take_pending / diag_throw_pending (core-only). If there is a supported way to read the pending exception's rendered text and to queue an SV as a compile error, I will write the registry patches and add the PL_errors case to parser-error-count-v1. Meanwhile I am A/B-testing my 43 part-1 failures against ordinary perl 5.44 to separate XPerl incompatibilities from distribution or platform problems.
