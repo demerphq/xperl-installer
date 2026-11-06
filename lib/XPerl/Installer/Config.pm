@@ -21,7 +21,8 @@ sub load ($class, $path) {
 
     my $install = $config->{install} // {};
     die "config install must be a table\n" unless ref($install) eq 'HASH';
-    _keys($install, [qw(prefix mirror cache workdir registry jobs phase_timeout)], 'install');
+    _keys($install, [qw(prefix mirror cache workdir registry jobs phase_timeout
+                       native_prefixes)], 'install');
     if (exists $install->{jobs}) {
         die "config install.jobs must be a positive integer\n"
             unless !ref($install->{jobs}) && defined($install->{jobs})
@@ -32,7 +33,14 @@ sub load ($class, $path) {
             unless !ref($install->{phase_timeout}) && defined($install->{phase_timeout})
                 && $install->{phase_timeout} =~ /\A\d+\z/;
     }
-    for my $key (grep { $_ ne 'jobs' && $_ ne 'phase_timeout' } keys %$install) {
+    if (exists $install->{native_prefixes}) {
+        my $prefixes = $install->{native_prefixes};
+        die "config install.native_prefixes must be a list of directories\n"
+            unless ref($prefixes) eq 'ARRAY'
+                && !grep { ref || !defined || !length } @$prefixes;
+    }
+    for my $key (grep { !/\A(?:jobs|phase_timeout|native_prefixes)\z/ }
+                 keys %$install) {
         die "config install.$key must be a nonempty string\n"
             if ref($install->{$key}) || !defined($install->{$key})
                 || !length($install->{$key});

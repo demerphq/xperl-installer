@@ -1,4 +1,8 @@
 Unreleased
+    Builds find C libraries installed by Homebrew: its include, lib and
+    lib/pkgconfig directories are added to CPATH, LIBRARY_PATH and
+    PKG_CONFIG_PATH. --native-prefix DIR (or install.native_prefixes)
+    chooses other prefixes, --no-native-prefix none; receipts record them.
     Releases whose META.yml holds JSON, or whose metadata names the main
     module instead of the distribution, install instead of failing.
     Configure, build, test and install phases time out after --phase-timeout

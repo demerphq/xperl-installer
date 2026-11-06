@@ -52,8 +52,12 @@ sub new ($class, %args) {
     my $repair_limit = $args{repair_limit} // $repair_attempts;
     die "repair limit must be a non-negative integer\n"
         unless $repair_limit =~ /\A\d+\z/;
+    my $native_prefixes = $args{native_prefixes} // [];
+    die "native prefixes must be a list of directories\n"
+        unless ref $native_prefixes eq 'ARRAY';
     make_path($args{prefix}, $args{workdir});
     return bless {
+        native_prefixes => [@$native_prefixes],
         prefix  => abs_path($args{prefix}),
         workdir => abs_path($args{workdir}),
         install_lock => $args{install_lock},
@@ -83,6 +87,7 @@ sub install ($self, $release, %options) {
         xperl         => abs_path($^X),
         xperl_version => "$^V",
         platform      => XPerl::Installer::Platform::current(),
+        native_prefixes => [@{$self->{native_prefixes}}],
         workdir       => $work,
         phases        => [],
     };
@@ -381,6 +386,17 @@ sub _run ($self, $source, $log_path, @command) {
     local %ENV = %ENV;
     delete @ENV{qw(MAKEFLAGS MFLAGS GNUMAKEFLAGS MAKEOVERRIDES MAKELEVEL)};
     $ENV{PERL5LIB} = join($Config{path_sep}, $site, $arch, @include);
+    # Native library prefixes come after anything the caller already set.
+    for my $prefix (@{$self->{native_prefixes}}) {
+        for my $entry ([CPATH => 'include'], [LIBRARY_PATH => 'lib'],
+                       [PKG_CONFIG_PATH => 'lib', 'pkgconfig']) {
+            my ($name, @parts) = @$entry;
+            my $dir = File::Spec->catdir($prefix, @parts);
+            next unless -d $dir;
+            $ENV{$name} = join $Config{path_sep},
+                grep { defined && length } $ENV{$name}, $dir;
+        }
+    }
     if (my $phase = $options->{phase}) {
         $ENV{PERL} = abs_path($^X);
         $ENV{PERL_USE_UNSAFE_INC} =
