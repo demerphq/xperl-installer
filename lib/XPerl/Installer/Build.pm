@@ -6,6 +6,7 @@ use feature 'signatures';
 use Archive::Tar;
 use Config;
 use Cwd qw(abs_path getcwd);
+use Fcntl qw(:flock);
 use File::Basename qw(dirname);
 use File::Find qw(finddepth);
 use File::Path qw(make_path);
@@ -43,6 +44,7 @@ sub new ($class, %args) {
     return bless {
         prefix  => abs_path($args{prefix}),
         workdir => abs_path($args{workdir}),
+        install_lock => $args{install_lock},
         registry => $args{registry},
         repair_command => $repair_command,
         repair_attempts => $repair_attempts,
@@ -165,9 +167,17 @@ sub install ($self, $release, %options) {
                     }
                 }
                 my $log = File::Spec->catfile($work, "$phase-$attempt.log");
+                # Concurrent installers sharing a prefix take turns to
+                # install, so shared files such as perllocal.pod and the
+                # directory tree are never written by two at once.
+                my $lock = $phase eq 'install' && $self->{install_lock}
+                    ? _lock($self->{install_lock}) : undef;
+                my $started = time;
                 my $status = $self->_run($source, $log,
                     { phase => $phase,
                       unsafe_inc => $release->{x_use_unsafe_inc} }, @command);
+                my $finished = time;
+                undef $lock;
                 my $configuration_error;
                 if ($phase eq 'configure' && !$status
                     && !-f File::Spec->catfile($source, $configured_target)) {
@@ -177,6 +187,7 @@ sub install ($self, $release, %options) {
                 push @{$record->{phases}}, {
                     name => $phase, attempt => $attempt, command => \@command,
                     exit_status => $status, log => $log,
+                    started => $started, finished => $finished,
                     ($configuration_error
                         ? (validation_error => $configuration_error) : ()),
                 };
@@ -242,11 +253,18 @@ sub install ($self, $release, %options) {
         $record->{status} = 'installed';
         1;
     } or $error = $@ || "installation failed\n";
-    $record->{status} = 'failed' if $error;
-    my $receipt = File::Spec->catfile($work, 'receipt.json');
+    # An after_configure hook may stop the attempt because the configured
+    # release needs prerequisites that are not available yet. That is not a
+    # build result, so it is recorded apart from receipts.
+    my $deferred = ref($error) eq 'HASH' && $error->{defer};
+    $record->{status} = $deferred ? 'deferred' : 'failed' if $error;
+    $record->{deferred_prerequisites} = $error->{defer} if $deferred;
+    my $receipt = File::Spec->catfile($work,
+        $deferred ? 'deferred.json' : 'receipt.json');
     open my $out, '>', $receipt or die "cannot write $receipt: $!\n";
     print {$out} JSON::PP->new->canonical->pretty->encode($record);
     close $out or die "cannot close $receipt: $!\n";
+    die { %$error, receipt => $receipt } if $deferred;
     die "$error receipt: $receipt\n" if $error;
     $record->{receipt} = $receipt;
     return $record;
@@ -279,6 +297,12 @@ sub _remove_build_products ($source, $original, $keep) {
         },
     }, $source);
     return $removed;
+}
+
+sub _lock ($path) {
+    open my $handle, '>>', $path or die "cannot open install lock $path: $!\n";
+    flock($handle, LOCK_EX) or die "cannot lock $path: $!\n";
+    return $handle;    # released when the handle is closed
 }
 
 sub _unpack ($archive, $work) {

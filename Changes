@@ -1,4 +1,7 @@
 Unreleased
+    install accepts --jobs K (or install.jobs in the config) to build
+    independent releases in parallel. Receipts record phase start and finish
+    times.
     Rebuild from clean sources after an external repair, so make programs
     with one-second timestamps cannot test stale build products.
     Tests compare canonical paths and pass on macOS.
