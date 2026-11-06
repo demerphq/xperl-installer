@@ -3,9 +3,11 @@
 use strict;
 use warnings;
 use feature qw(dispatch_on signatures);
+use Cwd qw(abs_path);
 use FindBin;
 use lib "$FindBin::Bin/../lib";
 use File::Spec;
+use File::Temp qw(tempfile);
 use Getopt::Long qw(GetOptionsFromArray);
 use JSON::PP;
 use XPerl::Installer::Build;
@@ -22,7 +24,7 @@ sub usage () {
 Usage: xperl resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Name
        xperl fetch   [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Name
        xperl install [--config FILE] [--prefix DIR] [--registry DIR]
-                     [--from FILE]
+                     [--from FILE] [--resume] [--action-shell]
                      [--agent NAME | --repair-command PATH]
                      [--repair-attempts N] [--repair-timeout SECONDS]
                      [--repair-interval SECONDS]
@@ -32,7 +34,8 @@ Usage: xperl resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Na
                      [--layout auto|site|install_base]
                      [--mirror URL|DIR] [--cache DIR] [--workdir DIR] Module::Name...
        xperl install-ported --registry DIR [--config FILE] [--prefix DIR]
-                     [--dry-run] [--json] [--resume] [--jobs K]
+                     [--dry-run] [--json] [--resume] [--action-shell]
+                     [--jobs K]
                      [--phase-timeout SECONDS]
                      [--native-prefix DIR]... [--no-native-prefix]
                      [--layout auto|site|install_base]
@@ -70,7 +73,7 @@ my ($config_path, $agent, $mirror, $cache, $workdir, $refresh, $prefix,
     $repair_interval,
     $dry_run, $as_json, $resume, @only, @exclude, $jobs, $from, $phase_timeout,
     @native_prefixes, $no_native_prefix, $repair_jobs,
-    $layout);
+    $layout, $action_shell);
 GetOptionsFromArray(
     \@ARGV,
     'config=s' => \$config_path,
@@ -90,6 +93,7 @@ GetOptionsFromArray(
     'dry-run' => \$dry_run,
     'json' => \$as_json,
     'resume' => \$resume,
+    'action-shell' => \$action_shell,
     'only=s' => \@only,
     'exclude=s' => \@exclude,
     'jobs=i' => \$jobs,
@@ -144,6 +148,26 @@ if (defined $from) {
         push @modules, $line if length $line;
     }
 }
+if ($action eq 'install' && $resume) {
+    die "install --resume needs --workdir and no module list\n"
+        unless defined $workdir && !@modules && !defined $from;
+    my $path = File::Spec->catfile($workdir, 'install-session.json');
+    open my $input, '<', $path or die "cannot read install session $path: $!\n";
+    my $saved = JSON::PP->new->decode(do { local $/; <$input> });
+    die "cannot resume: incompatible install session in $path\n"
+        unless ($saved->{schema} // '') eq '1'
+            && ($saved->{xperl} // '') eq abs_path($^X)
+            && ($saved->{xperl_version} // '') eq "$^V";
+    @modules = @{$saved->{modules}};
+    my $options = $saved->{options};
+    ($prefix, $mirror, $cache, $registry, $jobs, $repair_jobs,
+     $repair_command, $repair_attempts, $repair_timeout, $repair_limit,
+     $repair_interval, $phase_timeout, $layout) =
+        @{$options}{qw(prefix mirror cache registry jobs repair_jobs
+                      repair_command repair_attempts repair_timeout repair_limit
+                      repair_interval phase_timeout layout)};
+    @native_prefixes = @{$options->{native_prefixes}};
+}
 die usage() if @modules > 1 && $action ne 'install';
 my $module = $modules[0];
 
@@ -171,6 +195,20 @@ sub builder ($ports) {
     );
 }
 
+sub open_action_shell ($actions, $workdir) {
+    for my $action (@$actions) {
+        my $name = $action->{cpan_path} // $action->{key};
+        print STDERR "\n$name: $action->{message}\n";
+        print STDERR "$action->{install_hint}\n"
+            if $action->{install_hint};
+    }
+    print STDERR "\nInstall the missing dependencies in this shell. "
+        . "Exit it to retry the batch.\n";
+    my $shell = $ENV{SHELL} // '/bin/sh';
+    system { $shell } $shell;
+    die "dependency shell failed; resume with --workdir $workdir\n" if $?;
+}
+
 dispatch ($action) {
     on ('resolve') {
         die usage() unless defined $module;
@@ -192,23 +230,64 @@ dispatch ($action) {
     }
     on ('install') {
         die usage() unless defined $module && defined $prefix;
+        die "--action-shell needs an interactive terminal\n"
+            if $action_shell && (!-t STDIN || !-t STDERR);
+        my $install_builder = builder(defined $registry
+            ? XPerl::Installer::Registry->new(path => $registry) : undef);
+        my $session_path = File::Spec->catfile($install_builder->{workdir},
+                                               'install-session.json');
+        my ($session_file, $temporary_session) = tempfile(
+            'install-session-XXXXXXXX', DIR => $install_builder->{workdir},
+            UNLINK => 0);
+        print {$session_file} JSON::PP->new->canonical->pretty->encode({
+            schema => 1, xperl => abs_path($^X), xperl_version => "$^V",
+            modules => \@modules,
+            options => {
+                prefix => $install_builder->{prefix},
+                mirror => defined($mirror) && -d $mirror
+                    ? abs_path($mirror) : $mirror,
+                cache => defined($cache) ? File::Spec->rel2abs($cache) : undef,
+                registry => defined($registry) ? abs_path($registry) : undef,
+                jobs => $jobs,
+                repair_jobs => $repair_jobs,
+                repair_command => $install_builder->{repair_command},
+                repair_attempts => $repair_attempts,
+                repair_timeout => $repair_timeout,
+                repair_limit => $repair_limit,
+                repair_interval => $repair_interval,
+                phase_timeout => $phase_timeout, layout => $layout,
+                native_prefixes => [map { File::Spec->rel2abs($_) }
+                                    @native_prefixes],
+            },
+        });
+        close $session_file
+            or die "cannot close install session $session_path: $!\n";
+        rename $temporary_session, $session_path
+            or die "cannot save install session $session_path: $!\n";
         # Several modules, a list, or parallel jobs use the scheduler: each
         # module is resolved once, shared prerequisites build once, and one
         # module's failure does not stop the rest.
-        if ($jobs > 1 || @modules > 1 || defined $from) {
+        if ($jobs > 1 || @modules > 1 || defined $from || $resume
+            || $action_shell || $install_builder->{repair_command}) {
             my %seen;
             my @requested = grep { !$seen{$_}++ } @modules;
-            my $parallel = XPerl::Installer::Parallel->new(
-                fetcher => fetcher(), jobs => $jobs,
-                repair_jobs => $repair_jobs,
-                builder => builder(defined $registry
-                    ? XPerl::Installer::Registry->new(path => $registry)
-                    : undef),
-                (@requested > 1 ? (progress => sub ($node) {
-                    printf STDERR "%-9s %s%s\n", $node->{status}, $node->{cpan_path},
-                        ($node->{reason} ? " ($node->{reason})" : '');
-                }) : ()));
-            my $result = $parallel->run(map { { module => $_ } } @requested);
+            my ($parallel, $result);
+            for my $pass (1 .. ($action_shell ? 2 : 1)) {
+                $parallel = XPerl::Installer::Parallel->new(
+                    fetcher => fetcher(), jobs => $jobs,
+                    repair_jobs => $repair_jobs,
+                    builder => $install_builder,
+                    (@requested > 1 ? (progress => sub ($node) {
+                        printf STDERR "%-9s %s%s\n", $node->{status}, $node->{cpan_path},
+                            ($node->{reason} ? " ($node->{reason})" : '');
+                    }) : ()));
+                $result = $parallel->run(map { { module => $_ } } @requested);
+                my @actions = map { { cpan_path => $_->{cpan_path},
+                                      %{$_->{user_action}} } }
+                              grep { $_->{user_action} } @{$result->{nodes}};
+                last unless $action_shell && $pass == 1 && @actions;
+                open_action_shell(\@actions, $install_builder->{workdir});
+            }
             my @outcomes;
             for my $request (@{$result->{requests}}) {
                 my $node = defined $request->{node}
@@ -234,6 +313,13 @@ dispatch ($action) {
                     : ()),
                 status => $status,
                 modules => \@outcomes,
+                user_actions => [map { { cpan_path => $_->{cpan_path},
+                                         %{$_->{user_action}} } }
+                                 grep { $_->{user_action} } @{$result->{nodes}}],
+                ($status eq 'failed'
+                    ? (resume => { workdir => $install_builder->{workdir},
+                                   command => 'xperl install --resume --workdir '
+                                       . $install_builder->{workdir} }) : ()),
                 receipts => [map { $_->{receipt} }
                              grep { $_->{status} eq 'installed' && $_->{receipt} }
                              @{$result->{nodes}}],
@@ -242,15 +328,14 @@ dispatch ($action) {
             exit($status eq 'installed' ? 0 : 1);
         }
         my $deps = XPerl::Installer::Deps->new(
-            fetcher => fetcher(), builder => builder(
-                defined $registry
-                    ? XPerl::Installer::Registry->new(path => $registry)
-                    : undef));
+            fetcher => fetcher(), builder => $install_builder);
         print JSON::PP->new->canonical->pretty->encode(
             $deps->install($module));
     }
     on ('install-ported') {
         die usage() if defined $module || !defined $registry;
+        die "--action-shell needs an interactive terminal\n"
+            if $action_shell && (!-t STDIN || !-t STDERR);
         my $ports = XPerl::Installer::Registry->new(path => $registry);
         my $selection = XPerl::Installer::Ported->select_entries(
             registry => $ports, only => \@only, exclude => \@exclude);
@@ -263,11 +348,20 @@ dispatch ($action) {
         }
         die "install-ported requires --prefix unless --dry-run is given\n"
             unless defined $prefix;
-        my $report = XPerl::Installer::Ported->run(
-            registry => $ports, fetcher => fetcher(),
-            builder => builder($ports), selection => $selection,
-            resume => $resume, progress => 1, jobs => $jobs,
-            repair_jobs => $repair_jobs);
+        my $ported_builder = builder($ports);
+        my $report;
+        for my $pass (1 .. ($action_shell ? 2 : 1)) {
+            $report = XPerl::Installer::Ported->run(
+                registry => $ports, fetcher => fetcher(),
+                builder => $ported_builder, selection => $selection,
+                resume => $resume || $pass > 1,
+                progress => 1, jobs => $jobs,
+                repair_jobs => $repair_jobs);
+            last unless $action_shell && $pass == 1
+                && @{$report->{user_actions}};
+            open_action_shell($report->{user_actions},
+                              $ported_builder->{workdir});
+        }
         print $as_json
             ? JSON::PP->new->canonical->pretty->encode($report)
             : XPerl::Installer::Ported::summary($report)

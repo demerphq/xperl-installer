@@ -244,13 +244,47 @@ argument: the absolute path to a JSON request file.
 
 The request has `schema: 1`, the module and CPAN archive identity, source
 digest, XPerl executable and version, attempt number, source directory,
-failed phase, command, and log path. When a registry patch set names migration
-recipes, `recipes` contains their IDs and absolute Markdown paths. The
+failed phase, command, log path, and `response_path`. When a registry patch
+set names migration recipes, `recipes` contains their IDs and absolute
+Markdown paths. The
 program should edit the source tree and exit zero when ready for another
 build. A nonzero exit or no source change stops repair. The installer reruns
 configuration,
 build, and tests after each successful repair call, and records every phase
 and request in the receipt. Installation runs only after the tests pass.
+
+When the log identifies a missing host dependency, the repair program should
+leave the source alone and write a JSON response at `response_path`:
+
+```json
+{
+  "schema": 1,
+  "status": "needs_user_action",
+  "action": {
+    "kind": "system_dependency",
+    "message": "Cyrus SASL development headers and library are missing",
+    "install_hint": "Ubuntu/Debian: sudo apt install libsasl2-dev"
+  }
+}
+```
+
+`install_hint` is optional. An agent should name a package only after checking
+the host's package manager or other reliable evidence. `kind` may instead be
+`core_change` or `manual_step`. Exit zero after writing the response. The
+installer records the action in the receipt and final JSON, stops retrying
+that release, and continues unrelated builds. It never runs the suggested
+command itself.
+
+Every `install` saves its request list and effective options as
+`WORKDIR/install-session.json`. After completing a missing dependency, run
+`xperl install --resume --workdir WORKDIR`. Installed modules satisfy the
+retry, while failed and blocked releases are attempted again. The saved
+session requires the same installed XPerl executable and version.
+`--action-shell` offers an interactive alternative for `install` and
+`install-ported`: after the batch finishes,
+it prints all queued actions, opens the user's shell, and retries the batch
+once when the shell exits. It requires a terminal and never opens a shell in
+an unattended run.
 
 After a successful repair, the installer writes `proposal.patch` next to the
 receipt. It compares repaired source files with the untouched CPAN archive,

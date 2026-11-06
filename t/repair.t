@@ -28,19 +28,22 @@ File: 02packages.details.txt
 Example::Fixable 1.00 E/EX/EXAMPLE/Example-Fixable-1.00.tar.gz
 Example::Unfixable 1.00 E/EX/EXAMPLE/Example-Unfixable-1.00.tar.gz
 Example::Slow 1.00 E/EX/EXAMPLE/Example-Slow-1.00.tar.gz
+Example::NeedsLibrary 1.00 E/EX/EXAMPLE/Example-NeedsLibrary-1.00.tar.gz
 INDEX
 gzip \$index => File::Spec->catfile($modules, '02packages.details.txt.gz')
     or die $GzipError;
 
-for my $name (qw(Fixable Unfixable Slow)) {
+for my $name (qw(Fixable Unfixable Slow NeedsLibrary)) {
     my $dist = "Example-$name-1.00";
     my $tar = Archive::Tar->new;
     $tar->add_data("$dist/Makefile.PL",
         "use ExtUtils::MakeMaker;\nWriteMakefile(NAME => 'Example::$name', VERSION => '1.00');\n");
     $tar->add_data("$dist/lib/Example/$name.pm",
         "package Example::$name;\nour \$VERSION = '1.00';\nsub value { 0 }\n1;\n");
-    $tar->add_data("$dist/t/basic.t",
-        "use Test::More tests => 1; use Example::$name; is(Example::${name}::value(), 42);\n");
+    my $test = $name eq 'NeedsLibrary'
+        ? "use Test::More tests => 1; ok(-f \$ENV{XPERL_TEST_LIBRARY_READY}, 'native library is available');\n"
+        : "use Test::More tests => 1; use Example::$name; is(Example::${name}::value(), 42);\n";
+    $tar->add_data("$dist/t/basic.t", $test);
     $tar->write(File::Spec->catfile($releases, "$dist.tar.gz"), 1);
 }
 
@@ -60,6 +63,19 @@ print {$marker} JSON::PP->new->encode($request);
 close $marker or die $!;
 exit 0 if $request->{module} eq 'Example::Unfixable';
 if ($request->{module} eq 'Example::Slow') { sleep 3; exit 0 }
+if ($request->{module} eq 'Example::NeedsLibrary') {
+    open my $out, '>', $request->{response_path} or die $!;
+    print {$out} JSON::PP->new->encode({
+        schema => 1, status => 'needs_user_action',
+        action => {
+            kind => 'system_dependency',
+            message => 'Install the example native library',
+            install_hint => 'sudo apt install libexample-dev',
+        },
+    });
+    close $out or die $!;
+    exit 0;
+}
 my $module = File::Spec->catfile($request->{source},
                                 qw(lib Example Fixable.pm));
 open my $source, '<', $module or die $!;
@@ -159,6 +175,71 @@ if ($unfixed_receipt) {
 }
 ok(!-f File::Spec->catfile($prefix, qw(lib perl5 Example Unfixable.pm)),
    'unrepaired module was not installed');
+
+# A missing host dependency is a user action, not a source repair. The
+# saved install request lets a later run retry it after the dependency arrives.
+my $action_work = File::Spec->catdir($root, 'action-work');
+my $ready = File::Spec->catfile($root, 'native-library-ready');
+local $ENV{XPERL_TEST_LIBRARY_READY} = $ready;
+open $pipe, '-|', $^X, $script, 'install', '--mirror', $mirror,
+    '--cache', $cache, '--prefix', $prefix, '--workdir', $action_work,
+    '--repair-command', $agent, '--repair-interval', '0',
+    'Example::NeedsLibrary' or die $!;
+my $action_output = do { local $/; <$pipe> };
+ok(!close $pipe, 'missing native library prevents installation');
+my $action_result = JSON::PP->new->decode($action_output);
+is($action_result->{user_actions}[0]{kind}, 'system_dependency',
+   'the result classifies the host dependency');
+is($action_result->{user_actions}[0]{install_hint},
+   'sudo apt install libexample-dev', 'the result includes an install hint');
+is($action_result->{resume}{workdir}, $action_work,
+   'the result points to the saved install session');
+my $action_receipt = $action_result->{nodes}[0]{receipt};
+my $action_record = JSON::PP->new->decode(do {
+    open my $input, '<', $action_receipt or die $!;
+    local $/; <$input>;
+});
+is($action_record->{user_action}{message},
+   'Install the example native library', 'receipt preserves the diagnosis');
+is(scalar(grep { $_->{name} eq 'repair' } @{$action_record->{phases}}), 1,
+   'the installer does not retry a missing host dependency');
+
+open my $native_library, '>', $ready or die $!;
+close $native_library or die $!;
+open $pipe, '-|', $^X, $script, 'install', '--resume',
+    '--workdir', $action_work or die $!;
+my $resumed_output = do { local $/; <$pipe> };
+ok(close $pipe, 'the saved request succeeds after the dependency arrives');
+my $resumed = JSON::PP->new->decode($resumed_output);
+is($resumed->{status}, 'installed', 'resume installs the distribution');
+is_deeply($resumed->{user_actions}, [],
+          'the resolved dependency leaves no pending action');
+
+SKIP: {
+    skip 'an interactive terminal is needed to test the action shell', 3
+        unless -t STDIN && -t STDERR;
+
+    unlink $ready or die $!;
+    my $shell = File::Spec->catfile($root, 'install-dependency-shell');
+    open my $shell_file, '>', $shell or die $!;
+    print {$shell_file} "#!$^X\n";
+    print {$shell_file} 'open my $out, q(>), $ENV{XPERL_TEST_LIBRARY_READY} or die $!; close $out or die $!;', "\n";
+    close $shell_file or die $!;
+    chmod 0755, $shell or die $!;
+
+    local $ENV{SHELL} = $shell;
+    open $pipe, '-|', $^X, $script, 'install', '--mirror', $mirror,
+        '--cache', $cache, '--prefix', File::Spec->catdir($root, 'shell-prefix'),
+        '--workdir', File::Spec->catdir($root, 'shell-work'),
+        '--repair-command', $agent, '--repair-interval', '0',
+        '--action-shell', 'Example::NeedsLibrary' or die $!;
+    my $shell_output = do { local $/; <$pipe> };
+    ok(close $pipe, 'the action shell retries the failed release');
+    ok(-f $ready, 'the shell ran before the retry');
+    my $shell_result = JSON::PP->new->decode($shell_output);
+    is($shell_result->{status}, 'installed',
+       'the retry succeeds after the shell exits');
+}
 
 open $pipe, '-|', $^X, $script, 'install', '--mirror', $mirror,
     '--cache', $cache, '--prefix', $prefix, '--repair-command', $agent,

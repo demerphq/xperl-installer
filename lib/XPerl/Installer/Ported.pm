@@ -199,11 +199,13 @@ sub run ($class, %args) {
 
     my $started = time;
     my @results;
+    my @actions;
     my $total = @{$selection->{entries}};
     my $number = 0;
     if (($args{jobs} // 1) > 1) {
         @results = _run_parallel($fetcher, $builder, $selection, $state,
-                                 $state_path, $deps->{prefer}, %args);
+                                 $state_path, $deps->{prefer}, %args,
+                                 action_queue => \@actions);
     }
     else { for my $entry (@{$selection->{entries}}) {
         ++$number;
@@ -244,6 +246,9 @@ sub run ($class, %args) {
         excluded => $selection->{excluded},
         invalid => $selection->{invalid},
         entries => \@results,
+        user_actions => @actions ? \@actions
+            : [map { { key => $_->{key}, %{$_->{user_action}} } }
+               grep { $_->{user_action} } @results],
     };
     $report->{report} = File::Spec->catfile($dir, 'report.json');
     $report->{summary} = File::Spec->catfile($dir, 'summary.txt');
@@ -256,7 +261,8 @@ sub _save_entry ($state, $result) {
     $state->{entries}{$result->{key}} = {
         map { $_ => $result->{$_} }
         grep { defined $result->{$_} }
-        qw(status reason receipt cpan_path source_sha256 patch_set patch_sha256)
+        qw(status reason receipt cpan_path source_sha256 patch_set patch_sha256
+           user_action)
     };
 }
 
@@ -293,6 +299,9 @@ sub _run_parallel ($fetcher, $builder, $selection, $state, $state_path,
         push @build, [$entry, $release];
     }
     my $run = $parallel->run(map { { release => $_->[1] } } @build);
+    push @{$args{action_queue}},
+        map { { cpan_path => $_->{cpan_path}, %{$_->{user_action}} } }
+        grep { $_->{user_action} } @{$run->{nodes}};
     for my $request (@{$run->{requests}}) {
         my ($pair) = grep { $_->[1] == $request->{release} } @build;
         my $entry = $pair->[0];
@@ -414,6 +423,8 @@ sub _receipt_details ($path) {
         patch_set => $receipt->{registry}{patch_set},
         patch_sha256 => $receipt->{registry}{patches} // [],
     );
+    $details{user_action} = $receipt->{user_action}
+        if ref($receipt->{user_action}) eq 'HASH';
     $details{failed_phase} = $failed->{name}
         if $failed && ($receipt->{status} // '') ne 'installed';
     my ($test) = reverse grep { $_->{name} eq 'test' } @phases;
@@ -482,6 +493,20 @@ sub summary ($report) {
                              @notes ? ' - ' . join('; ', @notes) : '');
         push @lines, "          receipt: $entry->{receipt}"
             if $entry->{receipt} && $entry->{status} eq 'failed';
+        if (my $action = $entry->{user_action}) {
+            push @lines, "          action: $action->{message}";
+            push @lines, "          install: $action->{install_hint}"
+                if $action->{install_hint};
+        }
+    }
+    my %shown = map { ($_->{cpan_path} => 1) }
+                grep { $_->{user_action} && $_->{cpan_path} }
+                @{$report->{entries}};
+    for my $action (@{$report->{user_actions} // []}) {
+        next unless $action->{cpan_path} && !$shown{$action->{cpan_path}}++;
+        push @lines, "action required for $action->{cpan_path}: $action->{message}";
+        push @lines, "          install: $action->{install_hint}"
+            if $action->{install_hint};
     }
     return join("\n", @lines) . "\n";
 }

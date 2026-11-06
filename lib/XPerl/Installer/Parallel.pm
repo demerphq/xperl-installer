@@ -245,6 +245,14 @@ sub _fail ($self, $node, $reason, $receipt = undef) {
     $node->{state} = 'failed';
     $node->{reason} = (split /\n/, $reason)[0];
     $node->{receipt} = $receipt if defined $receipt;
+    if (defined $receipt && -f $receipt) {
+        my $record = eval {
+            open my $input, '<', $receipt or die $!;
+            $JSON->decode(do { local $/; <$input> });
+        };
+        $node->{user_action} = $record->{user_action}
+            if ref($record) eq 'HASH' && ref($record->{user_action}) eq 'HASH';
+    }
     $self->{progress}->($self->_public($node)) if $self->{progress};
 }
 
@@ -569,7 +577,7 @@ sub _public ($self, $node) {
         cpan_path => $node->{path},
         status => $node->{state},
         (map { defined $node->{$_} ? ($_ => $node->{$_}) : () }
-         qw(reason receipt)),
+         qw(reason receipt user_action)),
         prerequisites => [sort keys %{$node->{prereqs}}],
     );
     $public{resumed} = JSON::PP::true if $node->{resumed};

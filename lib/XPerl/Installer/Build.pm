@@ -316,6 +316,8 @@ sub install ($self, $release, %options) {
                 }
                 my $request_path = File::Spec->catfile($work,
                                                         "repair-$attempt.json");
+                my $response_path = File::Spec->catfile($work,
+                                                        "repair-$attempt-response.json");
                 my $request = {
                     schema => 1,
                     attempt => $attempt,
@@ -330,6 +332,7 @@ sub install ($self, $release, %options) {
                         ? (validation_error => $configuration_error) : ()),
                     failed_command => \@command,
                     failed_log => $log,
+                    response_path => $response_path,
                     recipes => \@recipes,
                 };
                 open my $request_file, '>', $request_path
@@ -364,6 +367,14 @@ sub install ($self, $release, %options) {
                     if $repair_timed_out;
                 die "repair failed (exit $repair_status); see $repair_log\n"
                     if $repair_status;
+                if (-f $response_path) {
+                    my $action = _read_repair_action($response_path);
+                    $record->{phases}[-1]{response} = $response_path;
+                    if ($action) {
+                        $record->{user_action} = $action;
+                        die "user action required: $action->{message}; see $response_path\n";
+                    }
+                }
                 my $after_files = XPerl::Installer::Proposal::files($source);
                 my $manifest = XPerl::Installer::Proposal->manifest_files($source);
                 $new_files{$_} = 1 for grep {
@@ -409,6 +420,29 @@ sub install ($self, $release, %options) {
     die "$error receipt: $receipt\n" if $error;
     $record->{receipt} = $receipt;
     return $record;
+}
+
+sub _read_repair_action ($path) {
+    open my $input, '<', $path or die "cannot read repair response $path: $!\n";
+    my $response = eval { JSON::PP->new->decode(do { local $/; <$input> }) };
+    die "invalid repair response $path: $@\n" if $@;
+    die "invalid repair response $path: expected schema 1\n"
+        unless ref($response) eq 'HASH' && ($response->{schema} // '') eq '1';
+    die "invalid repair response $path: expected needs_user_action\n"
+        unless ($response->{status} // '') eq 'needs_user_action';
+    my $action = $response->{action};
+    die "invalid repair response $path: action needs a kind and message\n"
+        unless ref($action) eq 'HASH'
+            && ($action->{kind} // '') =~ /\A(?:system_dependency|core_change|manual_step)\z/
+            && !ref($action->{message}) && length($action->{message} // '');
+    die "invalid repair response $path: message must be one line\n"
+        if $action->{message} =~ /[\r\n]/;
+    if (exists $action->{install_hint}) {
+        die "invalid repair response $path: install_hint must be a string\n"
+            if ref($action->{install_hint});
+    }
+    return { map { $_ => $action->{$_} }
+             grep { exists $action->{$_} } qw(kind message install_hint) };
 }
 
 # Make compares timestamps, and some make programs (GNU make 3.81, the

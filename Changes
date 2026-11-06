@@ -1,4 +1,9 @@
 Unreleased
+    Repair agents can report missing host dependencies and other user actions
+    through a JSON response. Receipts and batch results preserve the action,
+    and repair stops without repeated source-free calls. Every install saves
+    a session for --resume; --action-shell opens an interactive shell once
+    for queued actions and retries after it exits.
     Exclude generated objects and test scratch files from AI patch proposals,
     so an agent that rebuilds a distribution cannot make proposal generation
     fail on binary or unrecognized temporary files.
