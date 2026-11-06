@@ -18,6 +18,8 @@ workspace. Read the instructions in the target repository before editing it.
   should stay synchronized with `xperl/.agents/skills/`. Use
   `perl_core_skillz/sync-agent-skills --check` to inspect it. Do not overwrite
   unrelated changes in either tree.
+- `git-compose-commit/` contains the commit-message tool required below.
+  Install it as described in its README or ask Yves for the executable.
 - `tmp/` holds disposable local builds, logs, and validation prefixes.
   `.ccache/` is an optional workspace-local compiler cache. Neither is a
   source repository.

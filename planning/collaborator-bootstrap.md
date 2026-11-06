@@ -34,9 +34,15 @@ git clone --branch xperl/main https://github.com/demerphq/xperl.git xperl
 git clone https://github.com/demerphq/xperl-installer.git xperl-installer
 git clone https://github.com/demerphq/xperl-cpan-ports.git xperl-cpan-ports
 git clone https://github.com/demerphq/perl_core_skillz.git perl_core_skillz
+git clone https://github.com/demerphq/git-compose-commit.git git-compose-commit
 cp xperl-installer/planning/perldev-AGENTS.md AGENTS.md
 mkdir -p tmp .ccache
 ```
+
+The [git-compose-commit repository](https://github.com/demerphq/git-compose-commit)
+documents its Cargo installation. If Rust and Cargo are available, run
+`cargo install --path ./git-compose-commit` from `perldev/`, then check
+`git-compose-commit --help`. If they are unavailable, ask Yves for the tool.
 
 Read the new umbrella `AGENTS.md`, then `xperl/AGENTS.md` and the relevant
 repository instructions. Check the skill mirror with
