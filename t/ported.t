@@ -317,4 +317,41 @@ like($other_summary, qr/^excluded: 14 entries/m,
      'the readable summary counts excluded entries');
 unlike($other_summary, qr{EXAMPLE/App}, 'excluded entries are not listed one by one');
 
+# --- the same selection with parallel jobs ---------------------------------
+my $parallel_prefix = File::Spec->catdir($root, 'parallel-prefix');
+my $parallel_work = File::Spec->catdir($root, 'parallel-work');
+($status, $output) = xperl('install-ported', common($parallel_prefix, $parallel_work),
+                           '--json', '--jobs', 3);
+isnt($status, 0, 'a parallel run with failures exits non-zero');
+my $parallel = by_key(eval { JSON::PP->new->decode($output) } // {});
+is($parallel->{"EXAMPLE/$_"}{status}, 'installed', "parallel run installs $_")
+    for qw(App Tool Patched Multi Base);
+is($parallel->{'OTHER/Patched'}{status}, 'installed',
+   'parallel run installs the other author\'s release');
+is($parallel->{'EXAMPLE/Patched'}{patch_set}, 'fix', 'parallel run applies the patch');
+is($parallel->{'EXAMPLE/Broken'}{failed_phase}, 'test', 'parallel run reports the failed phase');
+like($parallel->{'EXAMPLE/NeedsBroken'}{reason}, qr/dependency failed: \S*Broken-1\.00/,
+     'parallel run blocks a dependent of a failed release');
+like($parallel->{'EXAMPLE/Beta'}{reason}, qr/Omega-1\.00/,
+     'parallel run names the root failure for a transitive dependent');
+like($parallel->{'EXAMPLE/CycleA'}{reason}, qr/dependency cycle/, 'parallel run reports the cycle');
+is($parallel->{'EXAMPLE/Changed'}{status}, 'skipped', 'parallel run skips changed source');
+is($parallel->{'EXAMPLE/Gone'}{status}, 'skipped', 'parallel run skips a missing archive');
+my @parallel_base = grep {
+    open my $in, '<', $_ or die $!;
+    JSON::PP->new->decode(do { local $/; <$in> })->{cpan_path} =~ /Base-/
+} glob File::Spec->catfile($parallel_work, 'release-*', 'receipt.json');
+is(scalar @parallel_base, 1, 'parallel run builds the shared prerequisite once');
+like(do { open my $in, '<', $parallel_base[0] or die $!; local $/; <$in> },
+     qr{Base-1\.00\.tar\.gz}, 'parallel run uses the recorded prerequisite release');
+
+# A parallel resume rebuilds only failures.
+my $parallel_before = releases_built($parallel_work);
+($status, $output) = xperl('install-ported', common($parallel_prefix, $parallel_work),
+                           '--json', '--jobs', 3, '--resume');
+my $parallel_resumed = by_key(eval { JSON::PP->new->decode($output) } // {});
+ok($parallel_resumed->{'EXAMPLE/App'}{resumed}, 'parallel resume keeps an earlier success');
+is(releases_built($parallel_work) - $parallel_before, 2,
+   'parallel resume rebuilt only the failed releases');
+
 done_testing();

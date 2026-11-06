@@ -12,6 +12,7 @@ use JSON::PP;
 use POSIX qw(strftime);
 use version;
 use XPerl::Installer::Deps;
+use XPerl::Installer::Parallel;
 use XPerl::Installer::Platform;
 use XPerl::Installer::Registry;
 
@@ -200,23 +201,24 @@ sub run ($class, %args) {
     my @results;
     my $total = @{$selection->{entries}};
     my $number = 0;
-    for my $entry (@{$selection->{entries}}) {
+    if (($args{jobs} // 1) > 1) {
+        @results = _run_parallel($fetcher, $builder, $selection, $state,
+                                 $state_path, $deps->{prefer}, %args);
+    }
+    else { for my $entry (@{$selection->{entries}}) {
         ++$number;
         my $result = _run_entry($deps, $fetcher, $entry,
                                 $state->{entries}{$entry->{key}});
         push @results, $result;
         printf STDERR "[%*d/%d] %-9s %s %s%s\n", length($total), $number,
             $total, $result->{status}, $entry->{key}, $entry->{version},
-            ($result->{reason} ? " ($result->{reason})" : '')
+            ($result->{resumed} ? ' (resumed)'
+             : $result->{reason} ? " ($result->{reason})" : '')
             if $args{progress};
-        $state->{entries}{$entry->{key}} = {
-            map { $_ => $result->{$_} }
-            grep { defined $result->{$_} }
-            qw(status reason receipt cpan_path source_sha256 patch_set patch_sha256)
-        };
+        _save_entry($state, $result);
         $state->{built} = { %{$deps->{installed}} };
         _write_json($state_path, $state);
-    }
+    } }
 
     my %counts = map { $_ => 0 } qw(installed satisfied failed skipped);
     ++$counts{$_->{status}} for @results;
@@ -250,23 +252,111 @@ sub run ($class, %args) {
     return $report;
 }
 
-sub _run_entry ($deps, $fetcher, $entry, $previous) {
-    my %result = (
+sub _save_entry ($state, $result) {
+    $state->{entries}{$result->{key}} = {
+        map { $_ => $result->{$_} }
+        grep { defined $result->{$_} }
+        qw(status reason receipt cpan_path source_sha256 patch_set patch_sha256)
+    };
+}
+
+# The same entries built by the parallel scheduler: recorded releases are
+# forced nodes, their prerequisites prefer recorded releases too, and every
+# release is built at most once.
+sub _run_parallel ($fetcher, $builder, $selection, $state, $state_path,
+                   $prefer, %args) {
+    my $parallel = XPerl::Installer::Parallel->new(
+        fetcher => $fetcher, builder => $builder, jobs => $args{jobs},
+        prefer => $prefer,
+        ($args{progress} ? (progress => sub ($node) {
+            printf STDERR "%-9s %s%s\n", $node->{status}, $node->{cpan_path},
+                ($node->{reason} ? " ($node->{reason})" : '');
+        }) : ()));
+    for my $path (sort keys %{$state->{built}}) {
+        my $receipt = $state->{built}{$path};
+        $parallel->mark_installed($path, $receipt) if defined $receipt && -f $receipt;
+    }
+    my (%results, @build);
+    for my $entry (@{$selection->{entries}}) {
+        my %result = _entry_fields($entry);
+        my $previous = $state->{entries}{$entry->{key}};
+        if (_resumable($previous, $entry)) {
+            $parallel->mark_installed($entry->{cpan_path}, $previous->{receipt})
+                if $previous->{status} eq 'installed';
+            $results{$entry->{key}} = { %result, %$previous,
+                resumed => JSON::PP::true, _receipt_details($previous->{receipt}) };
+            next;
+        }
+        my ($release, $skipped) = _fetch_or_skip($fetcher, $entry, \%result);
+        if ($skipped) { $results{$entry->{key}} = $skipped; next }
+        push @build, [$entry, $release];
+    }
+    my $run = $parallel->run(map { { release => $_->[1] } } @build);
+    for my $request (@{$run->{requests}}) {
+        my ($pair) = grep { $_->[1] == $request->{release} } @build;
+        my $entry = $pair->[0];
+        my %result = _entry_fields($entry);
+        my $node = defined $request->{node} ? $parallel->node($request->{node}) : undef;
+        if (!$node) {
+            $results{$entry->{key}} = { %result, status => 'failed',
+                reason => $request->{error} // 'not scheduled' };
+            next;
+        }
+        my $receipt = $node->{receipt};
+        $results{$entry->{key}} = {
+            %result,
+            status => $node->{state} eq 'installed' ? 'installed' : 'failed',
+            ($node->{reason} ? (reason => $node->{reason}) : ()),
+            ($receipt ? (receipt => $receipt, _receipt_details($receipt)) : ()),
+            dependency_receipts => [],
+        };
+    }
+    my @results = map { $results{$_->{key}} } @{$selection->{entries}};
+    _save_entry($state, $_) for @results;
+    $state->{built} = { %{$state->{built}},
+        map { ($_->{path} => $_->{receipt}) }
+        grep { $_->{state} eq 'installed' && $_->{receipt} }
+        values %{$parallel->{nodes}} };
+    _write_json($state_path, $state);
+    return @results;
+}
+
+sub _entry_fields ($entry) {
+    return (
         (map { $_ => $entry->{$_} }
          grep { defined $entry->{$_} }
          qw(key author distribution version module cpan_path source_sha256
             recorded)),
         planned_patch_set => $entry->{plan}{patch_set},
     );
+}
+
+# A resumed success must still describe exactly this release and patch
+# selection; a failure is always retried.
+sub _resumable ($previous, $entry) {
+    return $previous && ($previous->{status} // '') =~ /\A(?:installed|satisfied)\z/
+        && defined $previous->{receipt} && -f $previous->{receipt}
+        && ($previous->{cpan_path} // '') eq $entry->{cpan_path}
+        && ($previous->{source_sha256} // '') eq $entry->{source_sha256}
+        && _same_patches($previous, $entry->{plan});
+}
+
+# The fetch step shared by both modes: the recorded archive, or a skipped
+# or failed result.
+sub _fetch_or_skip ($fetcher, $entry, $result) {
+    my $release = eval { _fetch_recorded($fetcher, $entry) };
+    return ($release, undef) if $release;
+    chomp(my $error = $@);
+    my $skip = $error =~ /\A(?:archive unavailable|source changed)/;
+    return (undef, { %$result, status => $skip ? 'skipped' : 'failed',
+                     reason => (split /\n/, $error)[0] });
+}
+
+sub _run_entry ($deps, $fetcher, $entry, $previous) {
+    my %result = _entry_fields($entry);
     my $path = $entry->{cpan_path};
 
-    # A resumed success must still describe exactly this release and patch
-    # selection; a failure is always retried.
-    if ($previous && ($previous->{status} // '') =~ /\A(?:installed|satisfied)\z/
-        && defined $previous->{receipt} && -f $previous->{receipt}
-        && ($previous->{cpan_path} // '') eq $path
-        && ($previous->{source_sha256} // '') eq $entry->{source_sha256}
-        && _same_patches($previous, $entry->{plan})) {
+    if (_resumable($previous, $entry)) {
         $deps->mark_installed($path, $previous->{receipt})
             if $previous->{status} eq 'installed';
         return { %result, %$previous, resumed => JSON::PP::true,
@@ -282,13 +372,8 @@ sub _run_entry ($deps, $fetcher, $entry, $previous) {
                  reason => "failed earlier in this run: $reason" };
     }
 
-    my $release = eval { _fetch_recorded($fetcher, $entry) };
-    if (!$release) {
-        chomp(my $error = $@);
-        my $skip = $error =~ /\A(?:archive unavailable|source changed)/;
-        return { %result, status => $skip ? 'skipped' : 'failed',
-                 reason => (split /\n/, $error)[0] };
-    }
+    my ($release, $skipped) = _fetch_or_skip($fetcher, $entry, \%result);
+    return $skipped if $skipped;
 
     $deps->reset_request;
     my $first = @{$deps->{receipts}};
