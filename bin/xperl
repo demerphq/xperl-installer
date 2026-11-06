@@ -12,6 +12,7 @@ use XPerl::Installer::Build;
 use XPerl::Installer::Config;
 use XPerl::Installer::Deps;
 use XPerl::Installer::Fetch;
+use XPerl::Installer::Ported;
 use XPerl::Installer::Registry;
 
 sub usage () {
@@ -22,15 +23,23 @@ Usage: xperl resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Na
                      [--agent NAME | --repair-command PATH]
                      [--repair-attempts N] [--repair-timeout SECONDS]
                      [--mirror URL|DIR] [--cache DIR] [--workdir DIR] Module::Name
+       xperl install-ported --registry DIR [--config FILE] [--prefix DIR]
+                     [--dry-run] [--json] [--resume]
+                     [--only AUTHOR/Dist]... [--exclude AUTHOR/Dist]...
+                     [--agent NAME | --repair-command PATH]
+                     [--mirror URL|DIR] [--cache DIR] [--workdir DIR]
 
 This command must run with an installed XPerl. Installation supports
 Makefile.PL and Build.PL releases and their declared required prerequisites.
+install-ported rebuilds every release recorded as successful in the ports
+registry and writes report.json and summary.txt under WORKDIR/install-ported.
 USAGE
 }
 
 my $action = shift @ARGV // 'help';
 my ($config_path, $agent, $mirror, $cache, $workdir, $refresh, $prefix,
-    $registry, $repair_command, $repair_attempts, $repair_timeout);
+    $registry, $repair_command, $repair_attempts, $repair_timeout,
+    $dry_run, $as_json, $resume, @only, @exclude);
 GetOptionsFromArray(
     \@ARGV,
     'config=s' => \$config_path,
@@ -44,6 +53,11 @@ GetOptionsFromArray(
     'repair-command=s' => \$repair_command,
     'repair-attempts=i' => \$repair_attempts,
     'repair-timeout=i' => \$repair_timeout,
+    'dry-run' => \$dry_run,
+    'json' => \$as_json,
+    'resume' => \$resume,
+    'only=s' => \@only,
+    'exclude=s' => \@exclude,
 ) or die usage();
 
 my $settings = defined($config_path)
@@ -68,6 +82,25 @@ if (defined $agent) {
 my $module = shift @ARGV;
 die usage() if @ARGV;
 
+sub fetcher () {
+    return XPerl::Installer::Fetch->new(
+        (defined $mirror ? (mirror => $mirror) : ()),
+        (defined $cache  ? (cache  => $cache)  : ()),
+    );
+}
+
+sub builder ($ports) {
+    return XPerl::Installer::Build->new(
+        prefix => $prefix,
+        workdir => $workdir // File::Spec->catdir($cache // File::Spec->catdir(
+            $ENV{HOME} // File::Spec->tmpdir, '.xperl', 'cache'), 'work'),
+        (defined $ports ? (registry => $ports) : ()),
+        (defined $repair_command ? (repair_command => $repair_command) : ()),
+        (defined $repair_attempts ? (repair_attempts => $repair_attempts) : ()),
+        (defined $repair_timeout ? (repair_timeout => $repair_timeout) : ()),
+    );
+}
+
 dispatch ($action) {
     on ('resolve') {
         die usage() unless defined $module;
@@ -89,24 +122,37 @@ dispatch ($action) {
     }
     on ('install') {
         die usage() unless defined $module && defined $prefix;
-        my $fetcher = XPerl::Installer::Fetch->new(
-            (defined $mirror ? (mirror => $mirror) : ()),
-            (defined $cache  ? (cache  => $cache)  : ()),
-        );
-        my $builder = XPerl::Installer::Build->new(
-            prefix => $prefix,
-            workdir => $workdir // File::Spec->catdir($cache // File::Spec->catdir(
-                $ENV{HOME} // File::Spec->tmpdir, '.xperl', 'cache'), 'work'),
-            (defined $registry ? (registry => XPerl::Installer::Registry->new(
-                path => $registry)) : ()),
-            (defined $repair_command ? (repair_command => $repair_command) : ()),
-            (defined $repair_attempts ? (repair_attempts => $repair_attempts) : ()),
-            (defined $repair_timeout ? (repair_timeout => $repair_timeout) : ()),
-        );
         my $deps = XPerl::Installer::Deps->new(
-            fetcher => $fetcher, builder => $builder);
+            fetcher => fetcher(), builder => builder(
+                defined $registry
+                    ? XPerl::Installer::Registry->new(path => $registry)
+                    : undef));
         print JSON::PP->new->canonical->pretty->encode(
             $deps->install($module));
+    }
+    on ('install-ported') {
+        die usage() if defined $module || !defined $registry;
+        my $ports = XPerl::Installer::Registry->new(path => $registry);
+        my $selection = XPerl::Installer::Ported->select_entries(
+            registry => $ports, only => \@only, exclude => \@exclude);
+        if ($dry_run) {
+            print $as_json
+                ? JSON::PP->new->canonical->pretty->encode(
+                      XPerl::Installer::Ported::plan($selection))
+                : XPerl::Installer::Ported::plan_summary($selection);
+            exit 0;
+        }
+        die "install-ported requires --prefix unless --dry-run is given\n"
+            unless defined $prefix;
+        my $report = XPerl::Installer::Ported->run(
+            registry => $ports, fetcher => fetcher(),
+            builder => builder($ports), selection => $selection,
+            resume => $resume, progress => 1);
+        print $as_json
+            ? JSON::PP->new->canonical->pretty->encode($report)
+            : XPerl::Installer::Ported::summary($report)
+              . "report: $report->{report}\n";
+        exit($report->{counts}{failed} || $report->{counts}{skipped} ? 1 : 0);
     }
     on (_) {
         die usage() if $action ne 'help' || defined $module;

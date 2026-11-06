@@ -9,6 +9,7 @@ lib/XPerl/Installer/Config.pm
 lib/XPerl/Installer/Deps.pm
 lib/XPerl/Installer/Fetch.pm
 lib/XPerl/Installer/Platform.pm
+lib/XPerl/Installer/Ported.pm
 lib/XPerl/Installer/Proposal.pm
 lib/XPerl/Installer/Registry.pm
 planning/claude-code-prompt.md
@@ -21,5 +22,6 @@ t/config.t
 t/deps.t
 t/environment.t
 t/fetch.t
+t/ported.t
 t/registry.t
 t/repair.t
