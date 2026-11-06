@@ -88,6 +88,34 @@ release('ViaTwin', requires => ['Twin']);
 release('ViaExtra', requires => ['Twin::Extra']);
 release('Twins', requires => [qw(ViaTwin ViaExtra)]);
 
+# A package declared in META provides that lives inside another module's
+# file, so Module::Metadata cannot find it once installed.
+{
+    my $dist = 'Example-Multi-1.00';
+    my $tar = Archive::Tar->new;
+    $tar->add_data("$dist/Makefile.PL",
+        "use ExtUtils::MakeMaker;\nWriteMakefile(NAME => 'Example::Multi', VERSION => '1.00');\n");
+    $tar->add_data("$dist/lib/Example/Multi.pm",
+        "package Example::Multi;\nour \$VERSION = '1.00';\n"
+        . "package Example::Internal;\nsub value { 42 }\n1;\n");
+    $tar->add_data("$dist/t/basic.t",
+        "use Test::More tests => 1; use Example::Multi; is(Example::Internal::value(), 42);\n");
+    $tar->add_data("$dist/META.json", JSON::PP->new->encode({
+        'meta-spec' => { version => 2 }, name => 'Example-Multi', version => '1.00',
+        abstract => 'fixture', author => ['XPerl'], license => ['perl_5'],
+        generated_by => 'parallel.t', release_status => 'stable',
+        dynamic_config => JSON::PP::false, prereqs => {},
+        provides => {
+            'Example::Multi' => { file => 'lib/Example/Multi.pm', version => '1.00' },
+            'Example::Internal' => { file => 'lib/Example/Multi.pm' },
+        },
+    }));
+    $tar->write(File::Spec->catfile($releases, "$dist.tar.gz"), 1);
+    push @index, "Example::Multi 1.00 E/EX/EXAMPLE/$dist.tar.gz",
+                 "Example::Internal undef E/EX/EXAMPLE/$dist.tar.gz";
+}
+release('UsesInternal', requires => ['Internal']);
+
 my $index = "File: 02packages.details.txt\n\n" . join("\n", sort @index) . "\n";
 gzip \$index => File::Spec->catfile($mirror, 'modules', '02packages.details.txt.gz')
     or die $GzipError;
@@ -209,6 +237,13 @@ for my $strict (qw(VerAHigh VerZHigh)) {
 is(node($result, 'VerLow')->{status}, 'installed',
    'a dependent satisfied by the release still installs');
 is(node($result, 'VerTop')->{status}, 'blocked', 'their common dependent is blocked');
+
+# A dependent of a package declared only in META provides is built once the
+# release declaring it is installed.
+($status, $result, $prefix, $work) = install('Example::UsesInternal', '--jobs', 2);
+is($status, 0, 'a dependent of a provides-only package installs');
+is(node($result, 'UsesInternal')->{status}, 'installed',
+   'the provides-only package counts as installed');
 
 # --jobs 1 keeps the sequential path.
 ($status, $result) = install('Example::Top', '--jobs', 1);

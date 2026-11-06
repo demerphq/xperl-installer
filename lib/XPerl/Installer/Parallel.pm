@@ -166,6 +166,8 @@ sub _expand ($self) {
                 $release->{distribution} //= $meta->name;
                 $release->{distribution_version} //= $meta->version;
                 my $provides = $meta->provides // {};
+                $node->{declared}{$_} = $provides->{$_}
+                    for grep { ($provides->{$_}{file} // '') =~ m{\Alib/} } keys %$provides;
                 $node->{provides}{$_} //= $provides->{$_}{version}
                     for grep { defined $provides->{$_}{version} } keys %$provides;
                 my $structure = $meta->as_struct;
@@ -437,11 +439,27 @@ sub _available ($self, $module, $range) {
     my $prefix = $self->{builder}{prefix};
     my $site = File::Spec->catdir($prefix, 'lib', 'perl5');
     my @inc = ($site, File::Spec->catdir($site, $Config{archname}), @INC);
-    my $metadata = Module::Metadata->new_from_module($module, inc => \@inc)
-        or return 0;
-    my $requirements = CPAN::Meta::Requirements->new;
-    $requirements->add_string_requirement($module, $range // '0');
-    return $requirements->accepts_module($module, $metadata->version // '0');
+    my $metadata = Module::Metadata->new_from_module($module, inc => \@inc);
+    my $version = $metadata ? $metadata->version // '0'
+        : $self->_declared_version($module, $site);
+    return 0 unless defined $version;
+    return _accepts($module, $range, $version);
+}
+
+# A package declared in META provides inside another module's file has no
+# file of its own, so Module::Metadata cannot find it. It counts as
+# installed once the release declaring it is installed and the declaring
+# file is in the prefix.
+sub _declared_version ($self, $module, $site) {
+    my $path = $self->{modules}{$module} // return;
+    my $node = $self->{nodes}{$path};
+    return unless $node && $node->{state} eq 'installed';
+    my $entry = $node->{declared}{$module} or return;
+    my ($file) = $entry->{file} =~ m{\Alib/(.+)\z} or return;
+    my @parts = split m{/}, $file;
+    return unless -f File::Spec->catfile($site, @parts)
+        || -f File::Spec->catfile($site, $Config{archname}, @parts);
+    return $entry->{version} // '0';
 }
 
 sub _public ($self, $node) {
