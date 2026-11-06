@@ -1,4 +1,6 @@
 Unreleased
+    install-ported accepts --jobs K and builds the selected releases with
+    the parallel scheduler; progress lines mark resumed entries.
     Repair calls are capped per run with --repair-limit (default: one
     release worth of attempts) and never run concurrently, so a repair
     agent cannot be started more often than the user allowed.

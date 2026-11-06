@@ -181,7 +181,7 @@ dispatch ($action) {
         my $report = XPerl::Installer::Ported->run(
             registry => $ports, fetcher => fetcher(),
             builder => builder($ports), selection => $selection,
-            resume => $resume, progress => 1);
+            resume => $resume, progress => 1, jobs => $jobs);
         print $as_json
             ? JSON::PP->new->canonical->pretty->encode($report)
             : XPerl::Installer::Ported::summary($report)

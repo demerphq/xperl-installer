@@ -120,6 +120,37 @@ variables are scoped to the child command. The installer does not set
 `AUTOMATED_TESTING`, which denotes smoke testing rather than installation,
 and it leaves color settings such as `NO_COLOR` to the distribution's tests.
 
+## Parallel builds
+
+`--jobs K` (or `jobs` in the `[install]` table) builds independent releases
+in parallel, for both `install` and `install-ported`. The default of one job
+keeps the sequential installer. With more jobs:
+
+- The release graph is resolved breadth-first from each release's static
+  metadata before anything is built. Every module name that resolves to the
+  same CPAN release shares one node, so no release builds twice.
+- Up to K workers build releases whose prerequisites are installed. A failed
+  release keeps its receipt. Its descendants are reported as `blocked` with
+  "dependency failed: <release>: <reason>", and independent releases carry
+  on.
+- Dependency cycles are detected on the graph, and their members fail with
+  the cycle path.
+- When a release's configured metadata (`MYMETA`) names prerequisites that
+  are not yet available, its worker stops after configure. The scheduler
+  then adds those releases to the graph and builds the release again from a
+  clean copy. The stopped attempt is written to `deferred.json`, not to a
+  receipt.
+- The install phase holds an exclusive lock on
+  `PREFIX/.xperl-install.lock`, so two workers never install at once. Test
+  phases may still run while another release installs into the same prefix.
+- Workers never call a repair program. Failed releases are repaired one at a
+  time after the parallel pass, within the run's repair limit, and any
+  releases that become unblocked are then built in parallel.
+
+`install --jobs K` prints a `nodes` list with each release's status, reason,
+receipt and prerequisites. Receipts record each phase's start and finish
+times.
+
 ## Optional repair command
 
 `--repair-command PATH` or `--agent NAME` enables an external repair program after a failed
