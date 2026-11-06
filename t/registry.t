@@ -65,10 +65,20 @@ my $release = {
 my $registry = XPerl::Installer::Registry->new(path => $root);
 my $selection = $registry->patches_for($release);
 is($selection->{patch_set}, 'fix', 'selects the matching patch set');
+is($selection->{purpose}, 'compatibility', 'existing patch sets default to compatibility');
 is($selection->{patches}[0]{sha256}, $patch_sha,
    'checks and reports the patch digest');
 is($selection->{recipes}[0]{path}, abs_path($recipe_path),
    'provides a matching migration recipe');
+$index->{releases}[0]{patch_sets}[0]{purpose} = 'security';
+$index->{releases}[0]{patch_sets}[0]{advisories} = ['CVE-2024-45321'];
+open $index_file, '>', File::Spec->catfile($dist, 'index.json') or die $!;
+print {$index_file} JSON::PP->new->canonical->encode($index);
+close $index_file or die $!;
+$selection = $registry->patches_for($release);
+is($selection->{purpose}, 'security', 'security patch set is selected without author policy');
+is_deeply($selection->{advisories}, ['CVE-2024-45321'],
+          'security advisory is returned with the patch');
 eval { $registry->patches_for({ %$release, sha256 => 'b' x 64 }) };
 like($@, qr/source digest mismatch/, 'rejects a different source archive');
 open $patch, '>>', $patch_path or die $!;

@@ -82,6 +82,14 @@ sub patches_for ($self, $release) {
     return { patches => [], index_sha256 => Digest::SHA::sha256_hex($json) }
         unless @sets;
     my $set = $sets[0];
+    my $purpose = $set->{purpose} // 'compatibility';
+    die "invalid registry patch purpose: $purpose\n"
+        unless $purpose eq 'compatibility' || $purpose eq 'security';
+    my $advisories = $set->{advisories} // [];
+    die "security patch set needs an advisory\n"
+        if $purpose eq 'security' && ref($advisories) ne 'ARRAY';
+    die "security patch set needs an advisory\n"
+        if $purpose eq 'security' && !@$advisories;
     my @patches;
     for my $patch (@{$set->{patches}}) {
         my $relative = $patch->{path};
@@ -112,6 +120,8 @@ sub patches_for ($self, $release) {
     }
     return {
         patch_set => $set->{id},
+        purpose => $purpose,
+        advisories => $advisories,
         index_sha256 => Digest::SHA::sha256_hex($json),
         patches => \@patches,
         recipes => \@recipes,

@@ -182,6 +182,8 @@ sub install ($self, $release, %options) {
             @recipes = @{$selection->{recipes} // []};
             $record->{registry} = {
                 patch_set => $selection->{patch_set},
+                purpose => $selection->{purpose},
+                advisories => $selection->{advisories},
                 index_sha256 => $selection->{index_sha256},
                 patches => [map { $_->{sha256} } @{$selection->{patches}}],
             };
