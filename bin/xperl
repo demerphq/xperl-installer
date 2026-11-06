@@ -21,11 +21,12 @@ sub usage () {
 Usage: xperl resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Name
        xperl fetch   [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Name
        xperl install [--config FILE] [--prefix DIR] [--registry DIR]
+                     [--from FILE]
                      [--agent NAME | --repair-command PATH]
                      [--repair-attempts N] [--repair-timeout SECONDS]
                      [--repair-limit N]
                      [--jobs K]
-                     [--mirror URL|DIR] [--cache DIR] [--workdir DIR] Module::Name
+                     [--mirror URL|DIR] [--cache DIR] [--workdir DIR] Module::Name...
        xperl install-ported --registry DIR [--config FILE] [--prefix DIR]
                      [--dry-run] [--json] [--resume] [--jobs K]
                      [--only AUTHOR/Dist]... [--exclude AUTHOR/Dist]...
@@ -34,6 +35,8 @@ Usage: xperl resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Na
 
 This command must run with an installed XPerl. Installation supports
 Makefile.PL and Build.PL releases and their declared required prerequisites.
+install accepts several modules, or a file of module names (one per line;
+blank lines and # comments are ignored), and continues past failures.
 install-ported rebuilds every release recorded as successful in the ports
 registry and writes report.json and summary.txt under WORKDIR/install-ported.
 USAGE
@@ -42,7 +45,7 @@ USAGE
 my $action = shift @ARGV // 'help';
 my ($config_path, $agent, $mirror, $cache, $workdir, $refresh, $prefix,
     $registry, $repair_command, $repair_attempts, $repair_timeout, $repair_limit,
-    $dry_run, $as_json, $resume, @only, @exclude, $jobs);
+    $dry_run, $as_json, $resume, @only, @exclude, $jobs, $from);
 GetOptionsFromArray(
     \@ARGV,
     'config=s' => \$config_path,
@@ -63,6 +66,7 @@ GetOptionsFromArray(
     'only=s' => \@only,
     'exclude=s' => \@exclude,
     'jobs=i' => \$jobs,
+    'from=s' => \$from,
 ) or die usage();
 
 my $settings = defined($config_path)
@@ -87,8 +91,18 @@ if (defined $agent) {
     $repair_timeout //= $profile->{timeout};
 }
 
-my $module = shift @ARGV;
-die usage() if @ARGV;
+my @modules = @ARGV;
+if (defined $from) {
+    die "--from is only valid with install\n" unless $action eq 'install';
+    open my $list, '<', $from or die "cannot read $from: $!\n";
+    while (my $line = <$list>) {
+        $line =~ s/#.*//s;
+        $line =~ s/\A\s+|\s+\z//g;
+        push @modules, $line if length $line;
+    }
+}
+die usage() if @modules > 1 && $action ne 'install';
+my $module = $modules[0];
 
 sub fetcher () {
     return XPerl::Installer::Fetch->new(
@@ -131,24 +145,47 @@ dispatch ($action) {
     }
     on ('install') {
         die usage() unless defined $module && defined $prefix;
-        if ($jobs > 1) {
+        # Several modules, a list, or parallel jobs use the scheduler: each
+        # module is resolved once, shared prerequisites build once, and one
+        # module's failure does not stop the rest.
+        if ($jobs > 1 || @modules > 1 || defined $from) {
+            my %seen;
+            my @requested = grep { !$seen{$_}++ } @modules;
             my $parallel = XPerl::Installer::Parallel->new(
                 fetcher => fetcher(), jobs => $jobs,
                 builder => builder(defined $registry
                     ? XPerl::Installer::Registry->new(path => $registry)
-                    : undef));
-            my $result = $parallel->run({ module => $module });
-            my ($request) = @{$result->{requests}};
-            my $node = defined $request->{node}
-                ? $parallel->node($request->{node}) : undef;
-            my $status = $request->{error} ? 'failed'
-                : !$node || $node->{state} eq 'installed' ? 'installed'
-                : 'failed';
+                    : undef),
+                (@requested > 1 ? (progress => sub ($node) {
+                    printf STDERR "%-9s %s%s\n", $node->{status}, $node->{cpan_path},
+                        ($node->{reason} ? " ($node->{reason})" : '');
+                }) : ()));
+            my $result = $parallel->run(map { { module => $_ } } @requested);
+            my @outcomes;
+            for my $request (@{$result->{requests}}) {
+                my $node = defined $request->{node}
+                    ? $parallel->node($request->{node}) : undef;
+                my $reason = $request->{error} // ($node ? $node->{reason} : undef);
+                push @outcomes, {
+                    module => $request->{module},
+                    status => !$request->{error}
+                        && (!$node || $node->{state} eq 'installed')
+                        ? 'installed' : 'failed',
+                    ($node ? (release => $node->{path},
+                              ($node->{receipt} ? (receipt => $node->{receipt}) : ()))
+                           : ()),
+                    (defined $reason ? (reason => $reason) : ()),
+                };
+            }
+            my $status = (grep { $_->{status} ne 'installed' } @outcomes)
+                ? 'failed' : 'installed';
             print JSON::PP->new->canonical->pretty->encode({
-                module => $module,
+                (@outcomes == 1
+                    ? (module => $outcomes[0]{module},
+                       (defined $outcomes[0]{reason} ? (reason => $outcomes[0]{reason}) : ()))
+                    : ()),
                 status => $status,
-                ($request->{error} ? (reason => $request->{error})
-                 : $node && $node->{reason} ? (reason => $node->{reason}) : ()),
+                modules => \@outcomes,
                 receipts => [map { $_->{receipt} }
                              grep { $_->{status} eq 'installed' && $_->{receipt} }
                              @{$result->{nodes}}],
