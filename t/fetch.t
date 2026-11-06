@@ -9,6 +9,7 @@ use File::Path qw(make_path);
 use File::Spec;
 use File::Temp qw(tempdir);
 use IO::Compress::Gzip qw(gzip $GzipError);
+use IO::Compress::Zip;
 use JSON::PP;
 use Test::More;
 use XPerl::Installer::Fetch;
@@ -26,6 +27,7 @@ File: 02packages.details.txt
 URL: http://www.cpan.org/modules/02packages.details.txt
 
 Example::Tiny 1.00 E/EX/EXAMPLE/Example-Tiny-1.00.tar.gz
+Example::Zip 1.00 E/EX/EXAMPLE/Example-Zip-1.00.zip
 CPAN::02Packages::Search v1.0.0 S/SK/SKAJI/CPAN-02Packages-Search-v1.0.0.tar.gz
 INDEX
 gzip \$index => File::Spec->catfile($index_dir, '02packages.details.txt.gz')
@@ -35,6 +37,12 @@ my $archive = File::Spec->catfile($archive_dir, 'Example-Tiny-1.00.tar.gz');
 my $tar = Archive::Tar->new;
 $tar->add_data('Example-Tiny-1.00/META.json', '{"name":"Example-Tiny"}');
 $tar->write($archive, 1);
+
+my $zip_path = File::Spec->catfile($archive_dir, 'Example-Zip-1.00.zip');
+my $zip = IO::Compress::Zip->new($zip_path,
+    Name => 'Example-Zip-1.00/META.json') or die $IO::Compress::Zip::ZipError;
+print {$zip} '{"name":"Example-Zip","version":"1.00"}' or die $!;
+$zip->close or die $IO::Compress::Zip::ZipError;
 
 my $fetcher = XPerl::Installer::Fetch->new(mirror => $mirror, cache => $cache);
 is_deeply($fetcher->resolve('Example::Tiny'), {
@@ -52,6 +60,19 @@ ok(-f $result->{archive}, 'caches the release archive');
 open my $input, '<:raw', $archive or die $!;
 my $sha = Digest::SHA->new(256)->addfile($input)->hexdigest;
 is($result->{sha256}, $sha, 'records the source archive digest');
+
+my $zip_result = $fetcher->fetch('Example::Zip');
+is($zip_result->{archive_members}, 1, 'checks a ZIP release');
+is($zip_result->{cpan_path}, 'E/EX/EXAMPLE/Example-Zip-1.00.zip',
+   'resolves a ZIP release from the package index');
+
+my $unsafe = File::Spec->catfile($archive_dir, 'Example-Unsafe-1.00.zip');
+my $bad_zip = IO::Compress::Zip->new($unsafe,
+    Name => '../escape') or die $IO::Compress::Zip::ZipError;
+print {$bad_zip} 'bad' or die $!;
+$bad_zip->close or die $IO::Compress::Zip::ZipError;
+eval { $fetcher->fetch_path('E/EX/EXAMPLE/Example-Unsafe-1.00.zip') };
+like($@, qr/unsafe archive member/, 'rejects ZIP member path traversal');
 
 eval { $fetcher->resolve('../Example::Tiny') };
 like($@, qr/invalid CPAN module name/, 'rejects an unsafe module name');

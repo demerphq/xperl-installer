@@ -13,6 +13,7 @@ use File::Path qw(make_path);
 use File::Spec;
 use File::Temp qw(tempdir);
 use IO::Select;
+use IO::Uncompress::Unzip;
 use IPC::Open3;
 use JSON::PP;
 use Symbol qw(gensym);
@@ -520,6 +521,8 @@ sub _space_repair_calls ($path, $interval) {
 }
 
 sub _unpack ($archive, $work) {
+    return _unpack_zip($archive, $work) if $archive =~ /\.zip\z/i;
+
     my $tar = Archive::Tar->new;
     $tar->read($archive, 1) or die "cannot read $archive\n";
     my @files = $tar->get_files;
@@ -543,6 +546,46 @@ sub _unpack ($archive, $work) {
     my $message = $Archive::Tar::error;
     chdir $before or die "cannot return to $before: $!\n";
     die "cannot extract $archive: $message\n" unless $ok;
+    return File::Spec->catdir($work, $root);
+}
+
+sub _unpack_zip ($archive, $work) {
+    my $zip = IO::Uncompress::Unzip->new($archive)
+        or die "cannot read $archive: $IO::Uncompress::Unzip::UnzipError\n";
+    my %roots;
+    my $next;
+    do {
+        my $name = $zip->getHeaderInfo->{Name};
+        my ($root) = $name =~ m{\A([^/]+)};
+        die "unsafe archive member: $name\n"
+            unless defined $root && length $root
+                && $name !~ m{\A/|(?:\A|/)\.\.?(?:/|\z)}
+                && $name !~ /[\\:\0]/
+                && ($name =~ m{/} || $name =~ m{/$});
+        $roots{$root} = 1;
+
+        my $target = File::Spec->catfile($work, split m{/}, $name);
+        if ($name =~ m{/$}) {
+            make_path($target);
+        }
+        else {
+            make_path(dirname($target));
+            open my $out, '>:raw', $target
+                or die "cannot write $target: $!\n";
+            my $buffer;
+            while (my $size = $zip->read($buffer, 65536)) {
+                die "cannot read $name: $IO::Uncompress::Unzip::UnzipError\n"
+                    if $size < 0;
+                print {$out} $buffer or die "cannot write $target: $!\n";
+            }
+            close $out or die "cannot close $target: $!\n";
+        }
+        $next = $zip->nextStream;
+    } while ($next > 0);
+    die "cannot read $archive: $IO::Uncompress::Unzip::UnzipError\n"
+        if $next < 0;
+    die "archive has multiple source roots\n" unless keys(%roots) == 1;
+    my ($root) = keys %roots;
     return File::Spec->catdir($work, $root);
 }
 

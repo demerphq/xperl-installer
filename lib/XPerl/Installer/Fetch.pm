@@ -10,6 +10,7 @@ use File::Path qw(make_path);
 use File::Spec;
 use HTTP::Tiny;
 use IO::Uncompress::Gunzip;
+use IO::Uncompress::Unzip;
 
 sub new ($class, %args) {
     my $cache = $args{cache}
@@ -118,10 +119,12 @@ sub _check_release_path ($path) {
     die "unsafe or unsupported CPAN release path: $path\n"
         unless $path =~ m{\A[A-Za-z0-9_.+/-]+\z}
             && $path !~ m{(?:\A|/)\.\.? (?:/|\z)}x
-            && $path =~ m{\A[A-Z]/[A-Z]{2}/[A-Z0-9_-]+/(?:[A-Za-z0-9_.+-]+/)*[A-Za-z0-9_.+-]+\.(?:tar\.gz|tgz)\z};
+            && $path =~ m{\A[A-Z]/[A-Z]{2}/[A-Z0-9_-]+/(?:[A-Za-z0-9_.+-]+/)*[A-Za-z0-9_.+-]+\.(?:tar\.gz|tgz|zip)\z};
 }
 
 sub _check_archive ($archive) {
+    return _check_zip($archive) if $archive =~ /\.zip\z/i;
+
     my $tar = Archive::Tar->new;
     $tar->read($archive, 1) or die "cannot read archive $archive\n";
     my @files = $tar->get_files;
@@ -134,6 +137,26 @@ sub _check_archive ($archive) {
             if $file->is_symlink || $file->is_hardlink;
     }
     return scalar @files;
+}
+
+sub _check_zip ($archive) {
+    my $zip = IO::Uncompress::Unzip->new($archive)
+        or die "cannot read archive $archive: $IO::Uncompress::Unzip::UnzipError\n";
+    my $count = 0;
+    my $next;
+    do {
+        my $name = $zip->getHeaderInfo->{Name};
+        die "unsafe archive member: $name\n"
+            unless defined $name && length $name
+                && $name !~ m{\A/|(?:\A|/)\.\.?(?:/|\z)}
+                && $name !~ /[\\:\0]/;
+        ++$count;
+        $next = $zip->nextStream;
+    } while ($next > 0);
+    die "cannot read archive $archive: $IO::Uncompress::Unzip::UnzipError\n"
+        if $next < 0;
+    die "empty archive: $archive\n" unless $count;
+    return $count;
 }
 
 1;

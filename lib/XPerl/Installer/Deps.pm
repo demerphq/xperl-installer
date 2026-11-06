@@ -4,6 +4,7 @@ use strict;
 use warnings;
 use feature 'signatures';
 use Archive::Tar;
+use IO::Uncompress::Unzip;
 use Config;
 use CPAN::Meta;
 use CPAN::Meta::Requirements;
@@ -239,6 +240,39 @@ sub _remember_provides ($self, $meta) {
 }
 
 sub _metadata ($archive) {
+    if ($archive =~ /\.zip\z/i) {
+        my $zip = IO::Uncompress::Unzip->new($archive)
+            or die "cannot read $archive: $IO::Uncompress::Unzip::UnzipError\n";
+        my %content;
+        my $next;
+        do {
+            my $name = $zip->getHeaderInfo->{Name};
+            if ($name =~ m{\A[^/]+/(META\.(?:json|yml))\z}) {
+                my $suffix = $1;
+                my $body = '';
+                my $buffer;
+                while (my $size = $zip->read($buffer, 65536)) {
+                    die "cannot read $name: $IO::Uncompress::Unzip::UnzipError\n"
+                        if $size < 0;
+                    $body .= $buffer;
+                }
+                $content{$suffix} = $body;
+            }
+            $next = $zip->nextStream;
+        } while ($next > 0);
+        die "cannot read $archive: $IO::Uncompress::Unzip::UnzipError\n"
+            if $next < 0;
+        for my $suffix (qw(META.json META.yml)) {
+            next unless exists $content{$suffix};
+            my $body = $content{$suffix};
+            my $data = $suffix eq 'META.json' || $body =~ /\A\s*\{/
+                ? Parse::CPAN::Meta->load_json_string($body)
+                : Parse::CPAN::Meta->load_yaml_string($body);
+            return CPAN::Meta->new($data, { lazy_validation => 1 });
+        }
+        return;
+    }
+
     my $tar = Archive::Tar->new;
     $tar->read($archive, 1) or die "cannot read $archive\n";
     my @files = $tar->get_files;
@@ -269,7 +303,7 @@ sub _distribution_identity ($meta, $path) {
 
 sub _identity_from_path ($path) {
     my ($name, $version) = $path =~
-        m{/([A-Za-z0-9][A-Za-z0-9_.-]*)-([vV]?[0-9][A-Za-z0-9._-]*)\.(?:tar\.gz|tgz)\z};
+        m{/([A-Za-z0-9][A-Za-z0-9_.-]*)-([vV]?[0-9][A-Za-z0-9._-]*)\.(?:tar\.gz|tgz|zip)\z};
     die "cannot determine distribution identity from $path\n"
         unless defined $name && defined $version;
     return ($name, $version);

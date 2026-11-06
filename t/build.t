@@ -8,9 +8,11 @@ use File::Path qw(make_path);
 use File::Spec;
 use File::Temp qw(tempdir);
 use IO::Compress::Gzip qw(gzip $GzipError);
+use IO::Compress::Zip;
 use JSON::PP;
 use Test::More;
 use XPerl::Installer::Build;
+use XPerl::Installer::Deps;
 use XPerl::Installer::Fetch;
 
 my $root = tempdir(CLEANUP => 1,
@@ -28,6 +30,7 @@ File: 02packages.details.txt
 Example::Tiny 1.00 E/EX/EXAMPLE/Example-Tiny-1.00.tar.gz
 Example::Broken 1.00 E/EX/EXAMPLE/Example-Broken-1.00.tar.gz
 Example::NoMakefile 1.00 E/EX/EXAMPLE/Example-NoMakefile-1.00.tar.gz
+Example::Zipped 1.00 E/EX/EXAMPLE/Example-Zipped-1.00.zip
 INDEX
 gzip \$index => File::Spec->catfile($modules, '02packages.details.txt.gz')
     or die $GzipError;
@@ -110,5 +113,29 @@ my $no_makefile_release = $fetcher->fetch('Example::NoMakefile');
 eval { $builder->install($no_makefile_release) };
 like($@, qr/configure did not produce Makefile/,
      'zero-exit configure without a Makefile is rejected');
+
+# ZIP releases follow the same configure, build, test, and install path.
+my $zip_path = File::Spec->catfile($releases, 'Example-Zipped-1.00.zip');
+my $zip = IO::Compress::Zip->new($zip_path,
+    Name => 'Example-Zipped-1.00/Makefile.PL')
+    or die $IO::Compress::Zip::ZipError;
+print {$zip} "use ExtUtils::MakeMaker;\nWriteMakefile(NAME => 'Example::Zipped', VERSION => '1.00');\n"
+    or die $!;
+$zip->newStream(Name => 'Example-Zipped-1.00/lib/Example/Zipped.pm')
+    or die $IO::Compress::Zip::ZipError;
+print {$zip} "package Example::Zipped;\nour \$VERSION = '1.00';\n1;\n"
+    or die $!;
+$zip->newStream(Name => 'Example-Zipped-1.00/META.json')
+    or die $IO::Compress::Zip::ZipError;
+print {$zip} '{"name":"Example-Zipped","version":"1.00"}' or die $!;
+$zip->close or die $IO::Compress::Zip::ZipError;
+
+my $zip_release = $fetcher->fetch('Example::Zipped');
+is(XPerl::Installer::Deps::_metadata($zip_release->{archive})->name,
+   'Example-Zipped', 'reads CPAN metadata from a ZIP release');
+my $zip_receipt = $builder->install($zip_release);
+is($zip_receipt->{status}, 'installed', 'ZIP release installs successfully');
+ok(-f File::Spec->catfile($bad_prefix, qw(lib perl5 Example Zipped.pm)),
+   'ZIP module installed into the selected prefix');
 
 done_testing();
