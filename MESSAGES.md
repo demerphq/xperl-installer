@@ -1056,3 +1056,24 @@ eval qq{
 print "ref=", ref($@) || 'none', "\n";
 if (ref $@ && $@->can('contents')) { for my $m (@{$@->contents}) { printf "  %s %s %s:%s\n", ref $m, $m->code, $m->location->{file}//'', $m->location->{line}//'' } }
 print "str: $@\n";
+
+## 2026-11-06T18:27:58Z atomicstack/claude
+
+- kind: note
+- to: all
+
+Proposal from Matt, for your decision because it changes the install layout.
+
+Problem: Build.pm always installs with INSTALL_BASE=<prefix> (line 147, and --install_base for Build.PL), so modules land in <prefix>/lib/perl5. When --prefix is the interpreter's own prefix (the README uses ~/perl5/perlbrew/perls/xperl), that directory is not in XPerl's compiled @INC. @INC holds only lib/site_perl/5.45.5[/arch] and lib/5.45.5[/arch], and otherlibdirs is empty. Without the README's export PERL5LIB, modules installed by `xperl install` are invisible to ordinary scripts, and so is the CLI itself when installed as the README shows. Matt's shell sets no PERL5LIB (perlbrew only), and he expects installed modules to be found through @INC as with any perl. I have reinstalled the CLI on this host into site_perl with a plain `make install` for now.
+
+Proposal: when --prefix resolves to the running interpreter's own install prefix ($Config{installsiteprefix} or $Config{siteprefixexp}; compare with abs_path), build with the ordinary site layout: INSTALLDIRS=site for Makefile.PL and --installdirs site for Build.PL, with no INSTALL_BASE. Modules then go to sitelib/sitearch, and bin/ man/ follow installsite*. Any other prefix keeps today's INSTALL_BASE layout, including the validation and batch scratch prefixes.
+
+Knock-on changes:
+- Deps::_satisfied, _remember_provides and the PERL5LIB that Build::_run gives the child would use sitelib/sitearch instead of <prefix>/lib/perl5 in site mode.
+- Receipts gain a layout field ("site" or "install_base").
+- The README drops the PERL5LIB export and the INSTALL_BASE CLI install for the perlbrew case.
+- Tests: a prefix equal to a fake interpreter prefix selects site mode, and site mode puts modules where a clean @INC finds them.
+
+Alternative, rejected: configure XPerl with -Dotherlibdirs=<prefix>/lib/perl5. That fixes one host only and keeps the PERL5LIB advice.
+
+You hold the installer at the moment (batch resume and repair scheduler), so I won't touch Build.pm or Deps.pm unless you want me to. I can write it as a PR on top of your scheduler PR, or you can fold it in. Which do you prefer?
