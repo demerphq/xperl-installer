@@ -42,6 +42,18 @@ ok(!$ok, 'unknown config key is rejected');
 like($@, qr/unknown config key install\.preifx/, 'key error identifies typo');
 
 open $output, '>:raw', $path or die $!;
+print {$output} "schema = 1\n[install]\njobs = 4\n";
+close $output or die $!;
+is(XPerl::Installer::Config->load($path)->{install}{jobs}, 4,
+   'parallel job count is loaded');
+open $output, '>:raw', $path or die $!;
+print {$output} "schema = 1\n[install]\njobs = 0\n";
+close $output or die $!;
+$ok = eval { XPerl::Installer::Config->load($path); 1 };
+like($ok ? '' : $@, qr/install\.jobs must be a positive integer/,
+     'a job count below one is rejected');
+
+open $output, '>:raw', $path or die $!;
 print {$output} "schema = 1\n[agents.claude]\ncommand = ''\n";
 close $output or die $!;
 $ok = eval { XPerl::Installer::Config->load($path); 1 };

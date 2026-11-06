@@ -12,6 +12,7 @@ use XPerl::Installer::Build;
 use XPerl::Installer::Config;
 use XPerl::Installer::Deps;
 use XPerl::Installer::Fetch;
+use XPerl::Installer::Parallel;
 use XPerl::Installer::Ported;
 use XPerl::Installer::Registry;
 
@@ -22,9 +23,10 @@ Usage: xperl resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Na
        xperl install [--config FILE] [--prefix DIR] [--registry DIR]
                      [--agent NAME | --repair-command PATH]
                      [--repair-attempts N] [--repair-timeout SECONDS]
+                     [--jobs K]
                      [--mirror URL|DIR] [--cache DIR] [--workdir DIR] Module::Name
        xperl install-ported --registry DIR [--config FILE] [--prefix DIR]
-                     [--dry-run] [--json] [--resume]
+                     [--dry-run] [--json] [--resume] [--jobs K]
                      [--only AUTHOR/Dist]... [--exclude AUTHOR/Dist]...
                      [--agent NAME | --repair-command PATH]
                      [--mirror URL|DIR] [--cache DIR] [--workdir DIR]
@@ -39,7 +41,7 @@ USAGE
 my $action = shift @ARGV // 'help';
 my ($config_path, $agent, $mirror, $cache, $workdir, $refresh, $prefix,
     $registry, $repair_command, $repair_attempts, $repair_timeout,
-    $dry_run, $as_json, $resume, @only, @exclude);
+    $dry_run, $as_json, $resume, @only, @exclude, $jobs);
 GetOptionsFromArray(
     \@ARGV,
     'config=s' => \$config_path,
@@ -58,6 +60,7 @@ GetOptionsFromArray(
     'resume' => \$resume,
     'only=s' => \@only,
     'exclude=s' => \@exclude,
+    'jobs=i' => \$jobs,
 ) or die usage();
 
 my $settings = defined($config_path)
@@ -68,6 +71,8 @@ $cache    //= $defaults->{cache};
 $workdir  //= $defaults->{workdir};
 $prefix   //= $defaults->{prefix};
 $registry //= $defaults->{registry};
+$jobs     //= $defaults->{jobs} // 1;
+die "--jobs must be a positive integer\n" unless $jobs =~ /\A[1-9]\d*\z/;
 
 if (defined $agent) {
     die "--agent and --repair-command cannot be combined\n"
@@ -122,6 +127,31 @@ dispatch ($action) {
     }
     on ('install') {
         die usage() unless defined $module && defined $prefix;
+        if ($jobs > 1) {
+            my $parallel = XPerl::Installer::Parallel->new(
+                fetcher => fetcher(), jobs => $jobs,
+                builder => builder(defined $registry
+                    ? XPerl::Installer::Registry->new(path => $registry)
+                    : undef));
+            my $result = $parallel->run({ module => $module });
+            my ($request) = @{$result->{requests}};
+            my $node = defined $request->{node}
+                ? $parallel->node($request->{node}) : undef;
+            my $status = $request->{error} ? 'failed'
+                : !$node || $node->{state} eq 'installed' ? 'installed'
+                : 'failed';
+            print JSON::PP->new->canonical->pretty->encode({
+                module => $module,
+                status => $status,
+                ($request->{error} ? (reason => $request->{error})
+                 : $node && $node->{reason} ? (reason => $node->{reason}) : ()),
+                receipts => [map { $_->{receipt} }
+                             grep { $_->{status} eq 'installed' && $_->{receipt} }
+                             @{$result->{nodes}}],
+                nodes => $result->{nodes},
+            });
+            exit($status eq 'installed' ? 0 : 1);
+        }
         my $deps = XPerl::Installer::Deps->new(
             fetcher => fetcher(), builder => builder(
                 defined $registry
