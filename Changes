@@ -1,3 +1,8 @@
+Unreleased
+    Rebuild from clean sources after an external repair, so make programs
+    with one-second timestamps cannot test stale build products.
+    Tests compare canonical paths and pass on macOS.
+
 0.002  2026-11-06
     Add TOML configuration and named external repair agent profiles.
 
