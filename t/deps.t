@@ -100,14 +100,18 @@ my $result = eval { JSON::PP->new->decode($output) };
 ok($result && $result->{status} eq 'installed', 'dependency run succeeded');
 like($result->{receipts}[0], qr{\Q$workdir\E/},
      'build work is kept separate from the download cache');
-my @modules;
+my %receipts;
 for my $path (@{$result->{receipts}}) {
     open my $input, '<', $path or die $!;
     my $receipt = JSON::PP->new->decode(do { local $/; <$input> });
-    push @modules, $receipt->{module};
+    $receipts{$receipt->{module}} = $receipt;
 }
-is_deeply(\@modules, ['Example::Dependency', 'Example::Application'],
-          'configured dependency installed before its parent');
+my ($dependency_install) = grep { $_->{name} eq 'install' }
+    @{$receipts{'Example::Dependency'}{phases}};
+my ($application_configure) = reverse grep { $_->{name} eq 'configure' }
+    @{$receipts{'Example::Application'}{phases}};
+ok($dependency_install->{finished} <= $application_configure->{started},
+   'configured dependency installed before its parent build');
 ok(-f File::Spec->catfile($prefix, qw(lib perl5 Example Application.pm)),
    'application installed into selected prefix');
 

@@ -49,20 +49,23 @@ gzip \$index => File::Spec->catfile($mirror, 'modules', '02packages.details.txt.
 my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl');
 my $work = File::Spec->catdir($root, 'work');
 my $started = time;
-open my $saved, '>&', \*STDERR or die $!;
-open STDERR, '>', File::Spec->catfile($root, 'stderr') or die $!;
+open my $saved, '>&', \*STDOUT or die $!;
+open STDOUT, '>', File::Spec->catfile($root, 'result.json') or die $!;
 my $status = system($^X, $script, 'install', '--mirror', $mirror,
     '--cache', File::Spec->catdir($root, 'cache'),
     '--prefix', File::Spec->catdir($root, 'prefix'), '--workdir', $work,
     '--phase-timeout', 3, 'Example::Hang');
-open STDERR, '>&', $saved or die $!;
+open STDOUT, '>&', $saved or die $!;
 my $elapsed = time - $started;
-my $errors = do { open my $in, '<', File::Spec->catfile($root, 'stderr') or die $!;
-                  local $/; <$in> };
+my $result = do {
+    open my $input, '<', File::Spec->catfile($root, 'result.json') or die $!;
+    JSON::PP->new->decode(do { local $/; <$input> });
+};
 
 isnt($status, 0, 'a phase that never finishes fails the install');
 cmp_ok($elapsed, '<', 60, 'the installer does not wait for the hung phase');
-like($errors, qr/test timed out after 3 seconds/, 'the failure says the phase timed out');
+like($result->{modules}[0]{reason}, qr/test timed out after 3 seconds/,
+     'the result says the phase timed out');
 my ($receipt_path) = glob File::Spec->catfile($work, 'release-*', 'receipt.json');
 my $receipt = do { open my $in, '<', $receipt_path or die $!;
                    JSON::PP->new->decode(do { local $/; <$in> }) };

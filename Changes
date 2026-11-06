@@ -1,4 +1,7 @@
 Unreleased
+    Failed releases enter a repair queue while independent builds continue.
+    --repair-jobs controls repair workers separately from --jobs; batches
+    default to four build workers and one repair worker.
     Builds find C libraries installed by Homebrew: its include, lib and
     lib/pkgconfig directories are added to CPATH, LIBRARY_PATH and
     PKG_CONFIG_PATH. --native-prefix DIR (or install.native_prefixes)

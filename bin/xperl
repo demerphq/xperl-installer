@@ -25,7 +25,7 @@ Usage: xperl resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Na
                      [--from FILE]
                      [--agent NAME | --repair-command PATH]
                      [--repair-attempts N] [--repair-timeout SECONDS]
-                     [--repair-limit N]
+                     [--repair-limit N] [--repair-jobs K]
                      [--jobs K] [--phase-timeout SECONDS]
                      [--native-prefix DIR]... [--no-native-prefix]
                      [--mirror URL|DIR] [--cache DIR] [--workdir DIR] Module::Name...
@@ -35,12 +35,15 @@ Usage: xperl resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Na
                      [--native-prefix DIR]... [--no-native-prefix]
                      [--only AUTHOR/Dist]... [--exclude AUTHOR/Dist]...
                      [--agent NAME | --repair-command PATH]
+                     [--repair-jobs K]
                      [--mirror URL|DIR] [--cache DIR] [--workdir DIR]
 
 This command must run with an installed XPerl. Installation supports
 Makefile.PL and Build.PL releases and their declared required prerequisites.
 install accepts several modules, or a file of module names (one per line;
 blank lines and # comments are ignored), and continues past failures.
+Failed releases enter the repair queue while independent builds continue.
+--repair-jobs K allows up to K repair commands to run at once.
 install-ported rebuilds every release recorded as successful in the ports
 registry and writes report.json and summary.txt under WORKDIR/install-ported.
 --phase-timeout SECONDS stops a configure, build, test or install phase, and
@@ -56,7 +59,7 @@ my $action = shift @ARGV // 'help';
 my ($config_path, $agent, $mirror, $cache, $workdir, $refresh, $prefix,
     $registry, $repair_command, $repair_attempts, $repair_timeout, $repair_limit,
     $dry_run, $as_json, $resume, @only, @exclude, $jobs, $from, $phase_timeout,
-    @native_prefixes, $no_native_prefix);
+    @native_prefixes, $no_native_prefix, $repair_jobs);
 GetOptionsFromArray(
     \@ARGV,
     'config=s' => \$config_path,
@@ -70,6 +73,7 @@ GetOptionsFromArray(
     'repair-command=s' => \$repair_command,
     'repair-attempts=i' => \$repair_attempts,
     'repair-limit=i' => \$repair_limit,
+    'repair-jobs=i' => \$repair_jobs,
     'repair-timeout=i' => \$repair_timeout,
     'dry-run' => \$dry_run,
     'json' => \$as_json,
@@ -91,8 +95,9 @@ $cache    //= $defaults->{cache};
 $workdir  //= $defaults->{workdir};
 $prefix   //= $defaults->{prefix};
 $registry //= $defaults->{registry};
-$jobs     //= $defaults->{jobs} // 1;
+$jobs     //= $defaults->{jobs} // 4;
 $phase_timeout //= $defaults->{phase_timeout};
+$repair_jobs //= $defaults->{repair_jobs} // 1;
 die "--native-prefix and --no-native-prefix cannot be combined\n"
     if @native_prefixes && $no_native_prefix;
 @native_prefixes = $no_native_prefix ? ()
@@ -100,6 +105,8 @@ die "--native-prefix and --no-native-prefix cannot be combined\n"
     : $defaults->{native_prefixes} ? @{$defaults->{native_prefixes}}
     : XPerl::Installer::Platform::native_prefixes();
 die "--jobs must be a positive integer\n" unless $jobs =~ /\A[1-9]\d*\z/;
+die "--repair-jobs must be a positive integer\n"
+    unless $repair_jobs =~ /\A[1-9]\d*\z/;
 
 if (defined $agent) {
     die "--agent and --repair-command cannot be combined\n"
@@ -140,7 +147,9 @@ sub builder ($ports) {
         (defined $ports ? (registry => $ports) : ()),
         (defined $repair_command ? (repair_command => $repair_command) : ()),
         (defined $repair_attempts ? (repair_attempts => $repair_attempts) : ()),
-        (defined $repair_limit ? (repair_limit => $repair_limit) : ()),
+        (defined $repair_limit ? (repair_limit => $repair_limit)
+         : defined $repair_command
+             ? (repair_limit => ($repair_attempts // 2) * $repair_jobs) : ()),
         (defined $repair_timeout ? (repair_timeout => $repair_timeout) : ()),
         (defined $phase_timeout ? (phase_timeout => $phase_timeout) : ()),
         native_prefixes => [@native_prefixes],
@@ -176,6 +185,7 @@ dispatch ($action) {
             my @requested = grep { !$seen{$_}++ } @modules;
             my $parallel = XPerl::Installer::Parallel->new(
                 fetcher => fetcher(), jobs => $jobs,
+                repair_jobs => $repair_jobs,
                 builder => builder(defined $registry
                     ? XPerl::Installer::Registry->new(path => $registry)
                     : undef),
@@ -241,7 +251,8 @@ dispatch ($action) {
         my $report = XPerl::Installer::Ported->run(
             registry => $ports, fetcher => fetcher(),
             builder => builder($ports), selection => $selection,
-            resume => $resume, progress => 1, jobs => $jobs);
+            resume => $resume, progress => 1, jobs => $jobs,
+            repair_jobs => $repair_jobs);
         print $as_json
             ? JSON::PP->new->canonical->pretty->encode($report)
             : XPerl::Installer::Ported::summary($report)

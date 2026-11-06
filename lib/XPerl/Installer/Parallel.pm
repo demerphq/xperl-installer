@@ -19,14 +19,14 @@ use XPerl::Installer::Deps;
 # release's configured metadata (MYMETA) names prerequisites the static
 # metadata did not, its worker stops after configure; the scheduler adds the
 # new releases to the graph and builds the release again from a clean copy.
-# Repairs, when configured, run sequentially after the parallel pass.
+# Failed releases enter a repair queue while independent builds continue.
 
 my $JSON = JSON::PP->new->canonical;
 
 # Options:
-#   fetcher, builder   required; the builder's repair settings are used only
-#                      in the sequential repair pass
-#   jobs               worker count (at least 1)
+#   fetcher, builder   required; the builder supplies repair settings
+#   jobs               build worker count (at least 1)
+#   repair_jobs        repair worker count (at least 1)
 #   prefer             optional code reference, as for XPerl::Installer::Deps
 #   progress           optional code reference called with each finished node
 sub new ($class, %args) {
@@ -34,6 +34,9 @@ sub new ($class, %args) {
         unless $args{fetcher} && $args{builder};
     my $jobs = $args{jobs} // 1;
     die "jobs must be a positive integer\n" unless $jobs =~ /\A[1-9]\d*\z/;
+    my $repair_jobs = $args{repair_jobs} // 1;
+    die "repair jobs must be a positive integer\n"
+        unless $repair_jobs =~ /\A[1-9]\d*\z/;
     my $builder = $args{builder};
     $builder->{install_lock} //= File::Spec->catfile($builder->{prefix},
                                                      '.xperl-install.lock');
@@ -41,6 +44,7 @@ sub new ($class, %args) {
         fetcher => $args{fetcher},
         builder => $builder,
         jobs => $jobs,
+        repair_jobs => $repair_jobs,
         prefer => $args{prefer},
         progress => $args{progress},
         nodes => {},        # cpan_path => node
@@ -74,10 +78,7 @@ sub run ($self, @requests) {
     $self->_expand;
     $self->_mark_cycles;
 
-    while (1) {
-        $self->_schedule;
-        last unless $self->_repair_pass;
-    }
+    $self->_schedule;
     return {
         requests => \@requests,
         nodes => [map { $self->_public($_) }
@@ -250,34 +251,114 @@ sub _fail ($self, $node, $reason, $receipt = undef) {
 # ------------------------------------------------------------ scheduling
 
 sub _schedule ($self) {
-    my %running;    # pid => [node, result file]
+    my %running;
+    my $repair = { calls => 0, reserved => 0 };
+
     while (1) {
+        # A failed repair is final. While repair is pending, its dependents
+        # remain pending too, so they can run as soon as it succeeds.
         $self->_block_descendants;
-        for my $node ($self->_ready) {
-            last if keys(%running) >= $self->{jobs};
-            next unless $self->_needs_met($node);
-            $node->{state} = 'running';
-            ++$node->{attempts};
-            my ($fh, $result) = tempfile('result-XXXXXXXX',
-                DIR => $self->{builder}{workdir}, UNLINK => 0);
-            close $fh;
-            my $pid = fork // die "cannot fork: $!\n";
-            if (!$pid) {
-                $self->_worker($node, $result);
-                POSIX::_exit(0);
-            }
-            $running{$pid} = [$node, $result];
+
+        $self->_start_builds(\%running);
+        $self->_start_repairs(\%running, $repair);
+
+        unless (%running) {
+            $self->_block_descendants;
+            last;
         }
-        last unless %running;
-        my $pid = waitpid(-1, 0);
-        next unless $pid > 0 && $running{$pid};
-        my ($node, $result) = @{delete $running{$pid}};
-        my $outcome = eval {
-            open my $in, '<', $result or die "no result: $!\n";
-            $JSON->decode(do { local $/; <$in> });
-        } // { status => 'failed', reason => "worker ended without a result (wait status $?)" };
-        unlink $result;
-        $self->_record($node, $outcome);
+
+        $self->_finish_worker(\%running, $repair);
+    }
+}
+
+# Build slots are separate from repair slots. Filling one pool never waits
+# for space in the other.
+sub _start_builds ($self, $running) {
+    my $active = grep { $_->{kind} eq 'build' } values %$running;
+
+    for my $node ($self->_ready) {
+        last if $active >= $self->{jobs};
+        next unless $self->_needs_met($node);
+
+        $node->{state} = 'running';
+        ++$node->{attempts};
+        my ($pid, $worker) = $self->_start_worker('build', $node);
+        $running->{$pid} = $worker;
+        ++$active;
+    }
+}
+
+# Reserve the maximum agent calls a repair may make. When it finishes, return
+# any unused calls to the run's budget before starting another repair.
+sub _start_repairs ($self, $running, $repair) {
+    my $active = grep { $_->{kind} eq 'repair' } values %$running;
+
+    for my $node (sort { $a->{path} cmp $b->{path} }
+                  grep { $_->{state} eq 'repair_pending' }
+                  values %{$self->{nodes}}) {
+        last if $active >= $self->{repair_jobs};
+
+        my $remaining = $self->{builder}{repair_limit}
+            - $repair->{calls} - $repair->{reserved};
+        if ($remaining <= 0) {
+            # An active repair may return unused calls. Wait for it before
+            # treating another failure as beyond the run's limit.
+            last if $active;
+            $self->_fail($node, "$node->{reason}; repair limit reached",
+                         $node->{receipt});
+            next;
+        }
+
+        my $budget = $remaining < $self->{builder}{repair_attempts}
+            ? $remaining : $self->{builder}{repair_attempts};
+        $node->{state} = 'repairing';
+        my ($pid, $worker) = $self->_start_worker('repair', $node, $budget);
+        $running->{$pid} = $worker;
+        $repair->{reserved} += $budget;
+        ++$active;
+    }
+}
+
+sub _start_worker ($self, $kind, $node, $budget = 0) {
+    my ($fh, $result) = tempfile('result-XXXXXXXX',
+        DIR => $self->{builder}{workdir}, UNLINK => 0);
+    close $fh;
+
+    my $pid = fork // die "cannot fork $kind worker: $!\n";
+    unless ($pid) {
+        if ($kind eq 'repair') {
+            $self->_repair_worker($node, $result, $budget);
+        }
+        else {
+            $self->_worker($node, $result);
+        }
+        POSIX::_exit(0);
+    }
+
+    return ($pid, { kind => $kind, node => $node,
+                    result => $result, budget => $budget });
+}
+
+sub _finish_worker ($self, $running, $repair) {
+    my $pid = waitpid(-1, 0);
+    return unless $pid > 0 && $running->{$pid};
+
+    my $worker = delete $running->{$pid};
+    my $outcome = eval {
+        open my $input, '<', $worker->{result}
+            or die "cannot read worker result: $!\n";
+        $JSON->decode(do { local $/; <$input> });
+    } // { status => 'failed',
+           reason => "worker ended without a result (wait status $?)" };
+    unlink $worker->{result};
+
+    if ($worker->{kind} eq 'repair') {
+        $repair->{reserved} -= $worker->{budget};
+        $repair->{calls} += $outcome->{repair_calls} // $worker->{budget};
+        $self->_record_repair($worker->{node}, $outcome);
+    }
+    else {
+        $self->_record($worker->{node}, $outcome);
     }
 }
 
@@ -356,6 +437,29 @@ sub _worker ($self, $node, $result_path) {
     close $out or POSIX::_exit(2);
 }
 
+sub _repair_worker ($self, $node, $result_path, $budget) {
+    my $builder = bless { %{$self->{builder}}, repair_calls => 0,
+        repair_attempts => $budget, repair_limit => $budget,
+        ($self->{repair_jobs} > 1 ? (repair_lock => undef) : ()) },
+        ref $self->{builder};
+    my $record = eval { $builder->install($node->{release}) };
+    my $error = $@;
+    my $outcome;
+    if ($record) {
+        $outcome = { status => 'installed', receipt => $record->{receipt} };
+    }
+    else {
+        my ($receipt) = "$error" =~ /^ receipt: (\S+)$/m;
+        (my $reason = "$error") =~ s/\s*\n receipt: .*//s;
+        $outcome = { status => 'failed', reason => (split /\n/, $reason)[0],
+                     (defined $receipt ? (receipt => $receipt) : ()) };
+    }
+    $outcome->{repair_calls} = $builder->{repair_calls};
+    open my $out, '>', $result_path or POSIX::_exit(2);
+    print {$out} $JSON->encode($outcome);
+    close $out or POSIX::_exit(2);
+}
+
 # Configured prerequisites (MYMETA) that the static metadata did not name
 # and that are not available yet.
 sub _unknown_requirements ($self, $node, $source) {
@@ -409,30 +513,26 @@ sub _record ($self, $node, $outcome) {
         $self->_mark_cycles;
         return;
     }
+    if ($self->{builder}{repair_command} && $self->{builder}{repair_attempts}
+        && $outcome->{receipt}) {
+        $node->{state} = 'repair_pending';
+        $node->{reason} = $outcome->{reason} // 'installation failed';
+        $node->{receipt} = $outcome->{receipt};
+        $self->{progress}->($self->_public($node)) if $self->{progress};
+        return;
+    }
     $self->_fail($node, $outcome->{reason} // 'installation failed', $outcome->{receipt});
 }
 
-# Failed builds (not dependency failures) are retried one at a time with the
-# configured repair command. A success releases blocked descendants for
-# another parallel pass. Returns true when that pass is needed.
-sub _repair_pass ($self) {
-    my $builder = $self->{builder};
-    return 0 unless $builder->{repair_command} && $builder->{repair_attempts};
-    my $progress = 0;
-    for my $node (sort { $a->{path} cmp $b->{path} } values %{$self->{nodes}}) {
-        next unless $node->{state} eq 'failed' && $node->{receipt}
-            && !$node->{repair_tried}++;
-        my $record = eval { $builder->install($node->{release}) } or next;
-        @{$node}{qw(state receipt reason)} = ('installed', $record->{receipt}, undef);
+sub _record_repair ($self, $node, $outcome) {
+    if (($outcome->{status} // '') eq 'installed') {
+        @{$node}{qw(state receipt reason)} =
+            ('installed', $outcome->{receipt}, undef);
         $self->{progress}->($self->_public($node)) if $self->{progress};
-        $progress = 1;
+        return;
     }
-    return 0 unless $progress;
-    for my $node (values %{$self->{nodes}}) {
-        @{$node}{qw(state reason root)} = ('pending', undef, undef)
-            if $node->{state} eq 'blocked';
-    }
-    return 1;
+    $self->_fail($node, $outcome->{reason} // 'repair failed',
+                 $outcome->{receipt} // $node->{receipt});
 }
 
 # ---------------------------------------------------------- availability
@@ -478,3 +578,29 @@ sub _public ($self, $node) {
 }
 
 1;
+
+=pod
+
+=head1 NAME
+
+XPerl::Installer::Parallel - schedule CPAN builds and repairs
+
+=head1 DESCRIPTION
+
+The scheduler resolves the dependency graph before building releases. It
+starts a release when its prerequisites are installed and keeps independent
+builds moving when another release fails.
+
+With a configured repair command, a failed release enters the repair queue.
+Its dependents wait while repair runs. A successful repair installs the
+release and makes those dependents eligible in the same run. A final repair
+failure blocks only its dependents.
+
+=head1 WORKER LIMITS
+
+C<jobs> controls the number of build workers. C<repair_jobs> controls the
+number of repair workers. The two limits are independent. Repair calls also
+share the builder's C<repair_limit> for the whole run. The scheduler reserves
+each worker's possible calls and returns unused calls when it finishes.
+
+=cut

@@ -267,6 +267,7 @@ sub _run_parallel ($fetcher, $builder, $selection, $state, $state_path,
                    $prefer, %args) {
     my $parallel = XPerl::Installer::Parallel->new(
         fetcher => $fetcher, builder => $builder, jobs => $args{jobs},
+        repair_jobs => $args{repair_jobs},
         prefer => $prefer,
         ($args{progress} ? (progress => sub ($node) {
             printf STDERR "%-9s %s%s\n", $node->{status}, $node->{cpan_path},

@@ -123,16 +123,19 @@ and it leaves color settings such as `NO_COLOR` to the distribution's tests.
 ## Parallel builds
 
 `--jobs K` (or `jobs` in the `[install]` table) builds independent releases
-in parallel, for both `install` and `install-ported`. The default of one job
-keeps the sequential installer. With more jobs:
+in parallel, for both `install` and `install-ported`. The default is four
+build workers. A single `install Module --jobs 1` uses the sequential path.
+The scheduler:
 
 - The release graph is resolved breadth-first from each release's static
   metadata before anything is built. Every module name that resolves to the
   same CPAN release shares one node, so no release builds twice.
 - Up to K workers build releases whose prerequisites are installed. A failed
-  release keeps its receipt. Its descendants are reported as `blocked` with
-  "dependency failed: <release>: <reason>", and independent releases carry
-  on.
+  release keeps its receipt and enters the repair queue if an agent is
+  configured. Independent builds carry on. Dependents wait for repair and
+  start as soon as it installs the prerequisite. If repair fails or its
+  budget is exhausted, those dependents are reported as `blocked` with
+  "dependency failed: <release>: <reason>".
 - Dependency cycles are detected on the graph, and their members fail with
   the cycle path.
 - When a release's configured metadata (`MYMETA`) names prerequisites that
@@ -143,9 +146,9 @@ keeps the sequential installer. With more jobs:
 - The install phase holds an exclusive lock on
   `PREFIX/.xperl-install.lock`, so two workers never install at once. Test
   phases may still run while another release installs into the same prefix.
-- Workers never call a repair program. Failed releases are repaired one at a
-  time after the parallel pass, within the run's repair limit, and any
-  releases that become unblocked are then built in parallel.
+- Build workers never call a repair program. The separate repair pool starts
+  as failures arrive, with one worker by default. `--repair-jobs K` or
+  `repair_jobs = K` in `[install]` sets its size independently of `--jobs`.
 
 `install` also accepts several module names, or `--from FILE` with one module
 per line (blank lines and `#` comments are ignored). Such a batch uses the same
@@ -196,15 +199,14 @@ for one release; the default is two. `--repair-timeout SECONDS` limits each
 call; the default is 600 seconds.
 
 A repair program may start a paid AI agent, so its use is bounded for the
-whole run as well. `--repair-limit N` caps the repair calls one installer
-run may make across all releases. The default is the attempt limit, which is
-one release's worth. Once the limit is reached, later failures are reported
-with "repair skipped: repair limit of N calls reached" instead of calling the
-program, so going further needs an explicit higher limit. Repair calls never
-run concurrently: each holds an exclusive per-user lock in the temporary
-directory, so separate installer processes take turns, and parallel builds
-(`--jobs`) run repairs one at a time after the parallel pass. A selected
-agent profile can supply `attempts`, `timeout`, and `limit`.
+whole run as well. `--repair-limit N` caps agent calls across all releases.
+By default it allows `--repair-attempts` calls per repair worker. The
+scheduler reserves each repair's possible calls before starting it and
+returns unused calls when it finishes. Later failures are reported when the
+budget is exhausted. With the default one repair worker, a per-user lock
+also serializes agents started by separate installer processes. Selecting
+more than one repair worker permits concurrent agents. A selected agent
+profile can supply `attempts`, `timeout`, and `limit`.
 
 The installer never calls a repair program without an explicit selection. The
 command must be an executable file. It runs with the

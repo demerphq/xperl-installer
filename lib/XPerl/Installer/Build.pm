@@ -46,9 +46,9 @@ sub new ($class, %args) {
     my $phase_timeout = $args{phase_timeout} // 3600;
     die "phase timeout must be a non-negative integer\n"
         unless $phase_timeout =~ /\A\d+\z/;
-    # A repair command may start a paid AI agent. One builder serves a whole
-    # installer run, so this caps the agent calls of the run, not of one
-    # release. The default allows one release worth of attempts.
+    # A repair command may start a paid AI agent. The sequential builder
+    # tracks calls for its run. The parallel scheduler reserves calls across
+    # its workers before starting them.
     my $repair_limit = $args{repair_limit} // $repair_attempts;
     die "repair limit must be a non-negative integer\n"
         unless $repair_limit =~ /\A\d+\z/;
@@ -68,10 +68,11 @@ sub new ($class, %args) {
         phase_timeout => $phase_timeout,
         repair_limit => $repair_limit,
         repair_calls => 0,
-        # Separate installer processes share this, so a user's agent never
-        # runs twice at once.
-        repair_lock => $args{repair_lock} // File::Spec->catfile(
-            File::Spec->tmpdir, "xperl-repair-$<.lock"),
+        # One repair worker per process uses this per-user lock. Parallel
+        # runs with more than one repair worker opt out explicitly.
+        repair_lock => exists $args{repair_lock} ? $args{repair_lock}
+            : File::Spec->catfile(File::Spec->tmpdir,
+                                  "xperl-repair-$<.lock"),
     }, $class;
 }
 
@@ -267,7 +268,8 @@ sub install ($self, $release, %options) {
                                                      "repair-$attempt.log");
                 my $before_files = XPerl::Installer::Proposal::files($source);
                 ++$self->{repair_calls};
-                my $repair_lock = _lock($self->{repair_lock});
+                my $repair_lock = $self->{repair_lock}
+                    ? _lock($self->{repair_lock}) : undef;
                 my ($repair_status, $repair_timed_out) = $self->_run($source, $repair_log,
                     { timeout => $self->{repair_timeout} }, @repair_command);
                 undef $repair_lock;

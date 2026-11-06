@@ -54,6 +54,18 @@ like($ok ? '' : $@, qr/install\.jobs must be a positive integer/,
      'a job count below one is rejected');
 
 open $output, '>:raw', $path or die $!;
+print {$output} "schema = 1\n[install]\nrepair_jobs = 2\n";
+close $output or die $!;
+is(XPerl::Installer::Config->load($path)->{install}{repair_jobs}, 2,
+   'repair worker count is loaded');
+open $output, '>:raw', $path or die $!;
+print {$output} "schema = 1\n[install]\nrepair_jobs = 0\n";
+close $output or die $!;
+$ok = eval { XPerl::Installer::Config->load($path); 1 };
+like($ok ? '' : $@, qr/install\.repair_jobs must be a positive integer/,
+     'a repair worker count below one is rejected');
+
+open $output, '>:raw', $path or die $!;
 print {$output} "schema = 1\n[install]\nphase_timeout = 900\n";
 close $output or die $!;
 is(XPerl::Installer::Config->load($path)->{install}{phase_timeout}, 900,

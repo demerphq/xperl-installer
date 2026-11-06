@@ -235,7 +235,8 @@ ok(!defined $other_plan->{'OTHER/Patched'}{patch_set},
    'another author\'s release does not use EXAMPLE\'s patch');
 
 # --- full run ------------------------------------------------------------
-($status, $output) = xperl('install-ported', common($prefix, $workdir), '--json');
+($status, $output) = xperl('install-ported', common($prefix, $workdir),
+                           '--jobs', 1, '--json');
 isnt($status, 0, 'a run with failures exits non-zero');
 my $report = eval { JSON::PP->new->decode($output) } // {};
 my $entry = by_key($report);
@@ -291,11 +292,12 @@ for my $name (qw(report.json summary.txt state.json)) {
 }
 
 # --- resume --------------------------------------------------------------
-($status) = xperl('install-ported', common($prefix, $workdir), '--json');
+($status) = xperl('install-ported', common($prefix, $workdir),
+                  '--jobs', 1, '--json');
 isnt($status, 0, 'a second run without --resume refuses the used work directory');
 my $built_before = releases_built($workdir);
 ($status, $output) = xperl('install-ported', common($prefix, $workdir), '--json',
-                           '--resume');
+                           '--jobs', 1, '--resume');
 my $resumed = by_key(eval { JSON::PP->new->decode($output) } // {});
 ok($resumed->{'EXAMPLE/App'}{resumed}, 'resume keeps an earlier success');
 is($resumed->{'EXAMPLE/App'}{status}, 'installed', 'resumed success stays installed');

@@ -14,7 +14,7 @@ use JSON::PP;
 use List::Util qw(max);
 use Test::More;
 
-# Opt-in parallel installation (--jobs K) against a local CPAN mirror.
+# Parallel installation against a local CPAN mirror.
 
 my $root = abs_path(tempdir(CLEANUP => 1,
                             DIR => $ENV{XPERL_TEST_TMPDIR} // File::Spec->tmpdir));
@@ -61,12 +61,14 @@ sub release ($name, %opt) {
 
 release('SlowA', sleep => 2);
 release('SlowB', sleep => 2);
+release('SlowRepair', sleep => 4);
 release('Pair', requires => [qw(SlowA SlowB)]);
 release('Base');
 release('Left', requires => ['Base']);
 release('Right', requires => ['Base']);
 release('Top', requires => [qw(Left Right)]);
 release('Bad', broken => 1);
+release('BadTwo', broken => 1);
 release('NeedsBad', requires => ['Bad']);
 release('Fine');
 release('Mixed', requires => [qw(NeedsBad Fine)]);
@@ -157,14 +159,14 @@ sub node ($result, $name) {
     return $node // {};
 }
 
-# Independent releases build at the same time.
-my ($status, $result, $prefix, $work) = install('Example::Pair', '--jobs', 2);
-is($status, 0, 'parallel install succeeds');
+# The default build pool runs independent releases at the same time.
+my ($status, $result, $prefix, $work) = install('Example::Pair');
+is($status, 0, 'default parallel install succeeds');
 is($result->{status}, 'installed', 'requested module installed');
 my $built = by_dist(receipts($work));
 my ($ta, $tb) = map { phase($built->{$_}, 'test') } qw(SlowA SlowB);
 ok($ta && $tb && $ta->{started} < $tb->{finished} && $tb->{started} < $ta->{finished},
-   'independent test phases overlap with two jobs');
+   'independent test phases overlap by default');
 ok(phase($built->{Pair}, 'configure')->{started}
        >= max(map { phase($built->{$_}, 'install')->{finished} } qw(SlowA SlowB)),
    'a release starts only after its prerequisites are installed');
@@ -278,5 +280,85 @@ is_deeply([sort map { $_->{module} } @{$result->{modules}}],
 ($status, $result) = install('Example::Top', '--jobs', 1);
 is($status, 0, 'one job still installs');
 ok(!exists $result->{nodes}, 'one job uses the sequential installer');
+
+# A failed build moves to the repair pool. Its dependent waits while other
+# builds and repairs continue, then runs when the repair installs.
+my $agent = File::Spec->catfile($root, 'repair-agent');
+open my $agent_file, '>', $agent or die $!;
+print {$agent_file} "#!$^X\n";
+print {$agent_file} <<'AGENT';
+use strict;
+use warnings;
+use feature 'signatures';
+use File::Spec;
+use JSON::PP;
+use Time::HiRes qw(time sleep);
+my $request_path = shift @ARGV;
+open my $input, '<', $request_path or die $!;
+my $request = JSON::PP->new->decode(do { local $/; <$input> });
+my ($name) = $request->{module} =~ /\AExample::(Bad\w*)\z/
+    or die "unexpected repair module\n";
+sub event ($kind) {
+    open my $log, '>>', $ENV{XPERL_REPAIR_EVENTS} or die $!;
+    flock $log, 2 or die $!;
+    print {$log} "$name $kind ", time, "\n";
+    close $log or die $!;
+}
+event('start');
+sleep 2;
+my $path = File::Spec->catfile($request->{source}, 'lib', 'Example', "$name.pm");
+open my $source, '<', $path or die $!;
+my $body = do { local $/; <$source> };
+close $source or die $!;
+$body =~ s/sub value \{ 0 \}/sub value { 42 }/
+    or die "expected source not found\n";
+open my $output, '>', $path or die $!;
+print {$output} $body;
+close $output or die $!;
+event('end');
+AGENT
+close $agent_file or die $!;
+chmod 0755, $agent or die $!;
+my $events = File::Spec->catfile($root, 'repair-events');
+local $ENV{XPERL_REPAIR_EVENTS} = $events;
+($status, $result, $prefix, $work) = install(
+    '--jobs', 4, '--repair-jobs', 2, '--repair-attempts', 1,
+    '--repair-limit', 2, '--repair-command', $agent,
+    qw(Example::Bad Example::BadTwo Example::NeedsBad
+       Example::Fine Example::SlowRepair));
+is($status, 0, 'repairs unblock the batch');
+is(request($result, $_)->{status}, 'installed', "$_ installs after repair")
+    for qw(Example::Bad Example::BadTwo Example::NeedsBad
+           Example::Fine Example::SlowRepair);
+my $repaired = by_dist(grep { $_->{status} eq 'installed' } receipts($work));
+ok(phase($repaired->{Bad}, 'repair') && phase($repaired->{BadTwo}, 'repair'),
+   'both failures used the repair command');
+open my $events_file, '<', $events or die $!;
+my %times;
+while (my $line = <$events_file>) {
+    my ($name, $kind, $time) = split ' ', $line;
+    $times{$name}{$kind} = $time;
+}
+ok($times{Bad}{start} < $times{BadTwo}{end}
+       && $times{BadTwo}{start} < $times{Bad}{end},
+   'two repair workers overlap');
+my $slow_test = phase($repaired->{SlowRepair}, 'test');
+ok($slow_test->{started} < $times{Bad}{end}
+       && $times{Bad}{start} < $slow_test->{finished},
+   'a build continues while another release is repaired');
+
+# The default one-worker pool uses only the calls the run allows. Other
+# failures remain visible after the budget is spent.
+($status, $result) = install(
+    '--jobs', 4, '--repair-attempts', 1, '--repair-limit', 1,
+    '--repair-command', $agent,
+    qw(Example::Bad Example::BadTwo));
+isnt($status, 0, 'the batch reports an unrepaired release');
+my @limited = map { request($result, "Example::$_") } qw(Bad BadTwo);
+is(scalar(grep { $_->{status} eq 'installed' } @limited), 1,
+   'one failure is repaired with one call');
+my ($unrepaired) = grep { $_->{status} eq 'failed' } @limited;
+like($unrepaired->{reason}, qr/repair limit reached/,
+     'the other failure reports the exhausted repair budget');
 
 done_testing();
