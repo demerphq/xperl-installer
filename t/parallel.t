@@ -122,13 +122,13 @@ gzip \$index => File::Spec->catfile($mirror, 'modules', '02packages.details.txt.
 
 my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl');
 my $run = 0;
-sub install ($module, @extra) {
+sub install (@args) {
     ++$run;
     my $prefix = File::Spec->catdir($root, "prefix-$run");
     my $work = File::Spec->catdir($root, "work-$run");
     open my $pipe, '-|', $^X, $script, 'install', '--mirror', $mirror,
         '--cache', $cache, '--prefix', $prefix, '--workdir', $work,
-        @extra, $module or die $!;
+        @args or die $!;
     my $output = do { local $/; <$pipe> };
     close $pipe;
     my $status = $? >> 8;
@@ -244,6 +244,35 @@ is(node($result, 'VerTop')->{status}, 'blocked', 'their common dependent is bloc
 is($status, 0, 'a dependent of a provides-only package installs');
 is(node($result, 'UsesInternal')->{status}, 'installed',
    'the provides-only package counts as installed');
+
+# Several modules in one run: each is resolved once, shared prerequisites
+# are built once, and one module's failure does not stop the others.
+sub request ($result, $module) {
+    my ($request) = grep { $_->{module} eq $module } @{$result->{modules} // []};
+    return $request // {};
+}
+for my $jobs (2, 1) {
+    ($status, $result, $prefix, $work) = install('Example::Fine', '--jobs', $jobs,
+        'Example::Top', 'Example::Bad', 'Example::Missing', 'Example::Pair');
+    isnt($status, 0, "a batch with failures exits non-zero ($jobs jobs)");
+    is($result->{status}, 'failed', "batch status reports the failure ($jobs jobs)");
+    is(request($result, $_)->{status}, 'installed', "$_ installs in a batch ($jobs jobs)")
+        for qw(Example::Fine Example::Top Example::Pair);
+    is(request($result, 'Example::Bad')->{status}, 'failed',
+       "a broken module fails without stopping the batch ($jobs jobs)");
+    like(request($result, 'Example::Missing')->{reason}, qr/not found/,
+         "an unknown module is reported ($jobs jobs)");
+}
+
+# The same list from a file, with comments and blank lines.
+my $list = File::Spec->catfile($root, 'modules.txt');
+open my $list_file, '>', $list or die $!;
+print {$list_file} "# modules to install\nExample::Fine\n\nExample::Top  \n";
+close $list_file or die $!;
+($status, $result) = install('--from', $list, '--jobs', 2);
+is($status, 0, 'a module list from a file installs');
+is_deeply([sort map { $_->{module} } @{$result->{modules}}],
+          [qw(Example::Fine Example::Top)], 'comments and blank lines are ignored');
 
 # --jobs 1 keeps the sequential path.
 ($status, $result) = install('Example::Top', '--jobs', 1);

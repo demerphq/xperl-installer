@@ -147,6 +147,13 @@ keeps the sequential installer. With more jobs:
   time after the parallel pass, within the run's repair limit, and any
   releases that become unblocked are then built in parallel.
 
+`install` also accepts several module names, or `--from FILE` with one module
+per line (blank lines and `#` comments are ignored). Such a batch uses the same
+scheduler, even with one job: each module is resolved once, prerequisites they
+share are built once, and a failure does not stop the other modules. The
+output adds a `modules` list with each requested module's status, release,
+receipt and reason, and the command exits non-zero if any of them failed.
+
 `install --jobs K` prints a `nodes` list with each release's status, reason,
 receipt and prerequisites. Receipts record each phase's start and finish
 times.

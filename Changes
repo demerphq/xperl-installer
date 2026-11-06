@@ -1,4 +1,6 @@
 Unreleased
+    install accepts several modules or --from FILE and keeps going past
+    failures, reporting the outcome of each requested module.
     install-ported accepts --jobs K and builds the selected releases with
     the parallel scheduler; progress lines mark resumed entries.
     Repair calls are capped per run with --repair-limit (default: one
