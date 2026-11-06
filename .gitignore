@@ -8,3 +8,4 @@
 /XPerl-Installer-*.tar.gz
 /XPerl-Installer-*.tar
 /XPerl-Installer-*/
+/.worktrees/
