@@ -25,10 +25,11 @@ Usage: xperl resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Na
                      [--agent NAME | --repair-command PATH]
                      [--repair-attempts N] [--repair-timeout SECONDS]
                      [--repair-limit N]
-                     [--jobs K]
+                     [--jobs K] [--phase-timeout SECONDS]
                      [--mirror URL|DIR] [--cache DIR] [--workdir DIR] Module::Name...
        xperl install-ported --registry DIR [--config FILE] [--prefix DIR]
                      [--dry-run] [--json] [--resume] [--jobs K]
+                     [--phase-timeout SECONDS]
                      [--only AUTHOR/Dist]... [--exclude AUTHOR/Dist]...
                      [--agent NAME | --repair-command PATH]
                      [--mirror URL|DIR] [--cache DIR] [--workdir DIR]
@@ -39,13 +40,15 @@ install accepts several modules, or a file of module names (one per line;
 blank lines and # comments are ignored), and continues past failures.
 install-ported rebuilds every release recorded as successful in the ports
 registry and writes report.json and summary.txt under WORKDIR/install-ported.
+--phase-timeout SECONDS stops a configure, build, test or install phase, and
+every process it started, after that many seconds (default 3600; 0 disables).
 USAGE
 }
 
 my $action = shift @ARGV // 'help';
 my ($config_path, $agent, $mirror, $cache, $workdir, $refresh, $prefix,
     $registry, $repair_command, $repair_attempts, $repair_timeout, $repair_limit,
-    $dry_run, $as_json, $resume, @only, @exclude, $jobs, $from);
+    $dry_run, $as_json, $resume, @only, @exclude, $jobs, $from, $phase_timeout);
 GetOptionsFromArray(
     \@ARGV,
     'config=s' => \$config_path,
@@ -66,6 +69,7 @@ GetOptionsFromArray(
     'only=s' => \@only,
     'exclude=s' => \@exclude,
     'jobs=i' => \$jobs,
+    'phase-timeout=i' => \$phase_timeout,
     'from=s' => \$from,
 ) or die usage();
 
@@ -78,6 +82,7 @@ $workdir  //= $defaults->{workdir};
 $prefix   //= $defaults->{prefix};
 $registry //= $defaults->{registry};
 $jobs     //= $defaults->{jobs} // 1;
+$phase_timeout //= $defaults->{phase_timeout};
 die "--jobs must be a positive integer\n" unless $jobs =~ /\A[1-9]\d*\z/;
 
 if (defined $agent) {
@@ -121,6 +126,7 @@ sub builder ($ports) {
         (defined $repair_attempts ? (repair_attempts => $repair_attempts) : ()),
         (defined $repair_limit ? (repair_limit => $repair_limit) : ()),
         (defined $repair_timeout ? (repair_timeout => $repair_timeout) : ()),
+        (defined $phase_timeout ? (phase_timeout => $phase_timeout) : ()),
     );
 }
 

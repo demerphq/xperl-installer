@@ -40,6 +40,12 @@ sub new ($class, %args) {
     my $repair_timeout = $args{repair_timeout} // 600;
     die "repair timeout must be a positive integer\n"
         unless $repair_timeout =~ /\A[1-9]\d*\z/;
+    # A configure, build or test phase that runs longer than this is stopped
+    # with every process it started, so one hung test cannot stall a run.
+    # 0 disables the limit.
+    my $phase_timeout = $args{phase_timeout} // 3600;
+    die "phase timeout must be a non-negative integer\n"
+        unless $phase_timeout =~ /\A\d+\z/;
     # A repair command may start a paid AI agent. One builder serves a whole
     # installer run, so this caps the agent calls of the run, not of one
     # release. The default allows one release worth of attempts.
@@ -55,6 +61,7 @@ sub new ($class, %args) {
         repair_command => $repair_command,
         repair_attempts => $repair_attempts,
         repair_timeout => $repair_timeout,
+        phase_timeout => $phase_timeout,
         repair_limit => $repair_limit,
         repair_calls => 0,
         # Separate installer processes share this, so a user's agent never
@@ -185,9 +192,12 @@ sub install ($self, $release, %options) {
                 my $lock = $phase eq 'install' && $self->{install_lock}
                     ? _lock($self->{install_lock}) : undef;
                 my $started = time;
-                my $status = $self->_run($source, $log,
+                my ($status, $timed_out) = $self->_run($source, $log,
                     { phase => $phase,
-                      unsafe_inc => $release->{x_use_unsafe_inc} }, @command);
+                      unsafe_inc => $release->{x_use_unsafe_inc},
+                      ($self->{phase_timeout}
+                          ? (timeout => $self->{phase_timeout}) : ()) },
+                    @command);
                 my $finished = time;
                 undef $lock;
                 my $configuration_error;
@@ -200,6 +210,7 @@ sub install ($self, $release, %options) {
                     name => $phase, attempt => $attempt, command => \@command,
                     exit_status => $status, log => $log,
                     started => $started, finished => $finished,
+                    ($timed_out ? (timed_out => JSON::PP::true) : ()),
                     ($configuration_error
                         ? (validation_error => $configuration_error) : ()),
                 };
@@ -209,6 +220,8 @@ sub install ($self, $release, %options) {
                 next unless $status || $configuration_error;
                 my $failure = $configuration_error
                     ? "$configuration_error; see $log\n"
+                    : $timed_out
+                    ? "$phase timed out after $self->{phase_timeout} seconds; see $log\n"
                     : "$phase failed (exit $status); see $log\n";
                 die $failure
                     if $phase eq 'install' || !$self->{repair_command}
@@ -387,6 +400,12 @@ sub _run ($self, $source, $log_path, @command) {
         $ENV{NONINTERACTIVE_TESTING} = 1 if $phase eq 'test';
     }
     chdir $source or die "cannot enter $source: $!\n";
+    # A command with a deadline runs in its own process group, so that on
+    # timeout everything it started can be stopped, not just the command.
+    my $group = defined $deadline && $^O ne 'MSWin32';
+    @command = ($^X, '-e',
+        'setpgrp(0, 0); exec { $ARGV[0] } @ARGV or die "cannot exec $ARGV[0]: $!\\n"',
+        '--', @command) if $group;
     my ($input, $output, $error) = (gensym, gensym, gensym);
     my $pid = eval { open3($input, $output, $error, @command) };
     my $start_error = $@;
@@ -419,6 +438,7 @@ sub _run ($self, $source, $log_path, @command) {
         }
     }
     if ($timed_out) {
+        kill 9, -$pid if $group;
         kill 9, $pid;
         for my $fh ($select->handles) { close $fh }
     }

@@ -21,13 +21,18 @@ sub load ($class, $path) {
 
     my $install = $config->{install} // {};
     die "config install must be a table\n" unless ref($install) eq 'HASH';
-    _keys($install, [qw(prefix mirror cache workdir registry jobs)], 'install');
+    _keys($install, [qw(prefix mirror cache workdir registry jobs phase_timeout)], 'install');
     if (exists $install->{jobs}) {
         die "config install.jobs must be a positive integer\n"
             unless !ref($install->{jobs}) && defined($install->{jobs})
                 && $install->{jobs} =~ /\A[1-9]\d*\z/;
     }
-    for my $key (grep { $_ ne 'jobs' } keys %$install) {
+    if (exists $install->{phase_timeout}) {
+        die "config install.phase_timeout must be a non-negative integer\n"
+            unless !ref($install->{phase_timeout}) && defined($install->{phase_timeout})
+                && $install->{phase_timeout} =~ /\A\d+\z/;
+    }
+    for my $key (grep { $_ ne 'jobs' && $_ ne 'phase_timeout' } keys %$install) {
         die "config install.$key must be a nonempty string\n"
             if ref($install->{$key}) || !defined($install->{$key})
                 || !length($install->{$key});

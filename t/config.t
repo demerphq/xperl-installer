@@ -54,6 +54,18 @@ like($ok ? '' : $@, qr/install\.jobs must be a positive integer/,
      'a job count below one is rejected');
 
 open $output, '>:raw', $path or die $!;
+print {$output} "schema = 1\n[install]\nphase_timeout = 900\n";
+close $output or die $!;
+is(XPerl::Installer::Config->load($path)->{install}{phase_timeout}, 900,
+   'phase timeout is loaded');
+open $output, '>:raw', $path or die $!;
+print {$output} "schema = 1\n[install]\nphase_timeout = 'soon'\n";
+close $output or die $!;
+$ok = eval { XPerl::Installer::Config->load($path); 1 };
+like($ok ? '' : $@, qr/install\.phase_timeout must be a non-negative integer/,
+     'a non-numeric phase timeout is rejected');
+
+open $output, '>:raw', $path or die $!;
 print {$output} "schema = 1\n[agents.claude]\ncommand = ''\n";
 close $output or die $!;
 $ok = eval { XPerl::Installer::Config->load($path); 1 };
