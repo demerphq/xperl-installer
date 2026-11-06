@@ -10,6 +10,8 @@ lib/XPerl/Installer/Deps.pm
 lib/XPerl/Installer/Fetch.pm
 lib/XPerl/Installer/Proposal.pm
 lib/XPerl/Installer/Registry.pm
+planning/collaborator-bootstrap.md
+planning/perldev-AGENTS.md
 planning/xperl-package-manager.md
 t/build.t
 t/build_pl.t

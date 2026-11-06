@@ -1,5 +1,9 @@
 # XPerl::Installer
 
+Collaborators starting from a fresh workspace should use the
+[bootstrap and install-all handoff](planning/collaborator-bootstrap.md). It
+includes an [umbrella agent-instructions template](planning/perldev-AGENTS.md).
+
 The installer resolves a module through CPAN's `02packages` index, fetches its
 original release archive, and can build, test, and install a `Makefile.PL` or
 `Build.PL` distribution into an explicit prefix. It recursively installs
