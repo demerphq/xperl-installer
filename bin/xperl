@@ -9,15 +9,17 @@ use File::Spec;
 use Getopt::Long qw(GetOptionsFromArray);
 use JSON::PP;
 use XPerl::Installer::Build;
+use XPerl::Installer::Config;
 use XPerl::Installer::Deps;
 use XPerl::Installer::Fetch;
 use XPerl::Installer::Registry;
 
 sub usage () {
     return <<'USAGE';
-Usage: xperl resolve [--mirror URL|DIR] [--cache DIR] Module::Name
-       xperl fetch   [--mirror URL|DIR] [--cache DIR] Module::Name
-       xperl install --prefix DIR [--registry DIR] [--repair-command PATH]
+Usage: xperl resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Name
+       xperl fetch   [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Name
+       xperl install [--config FILE] [--prefix DIR] [--registry DIR]
+                     [--agent NAME | --repair-command PATH]
                      [--repair-attempts N] [--repair-timeout SECONDS]
                      [--mirror URL|DIR] [--cache DIR] [--workdir DIR] Module::Name
 
@@ -27,10 +29,12 @@ USAGE
 }
 
 my $action = shift @ARGV // 'help';
-my ($mirror, $cache, $workdir, $refresh, $prefix, $registry, $repair_command,
-    $repair_attempts, $repair_timeout);
+my ($config_path, $agent, $mirror, $cache, $workdir, $refresh, $prefix,
+    $registry, $repair_command, $repair_attempts, $repair_timeout);
 GetOptionsFromArray(
     \@ARGV,
+    'config=s' => \$config_path,
+    'agent=s' => \$agent,
     'mirror=s' => \$mirror,
     'cache=s'  => \$cache,
     'workdir=s' => \$workdir,
@@ -41,6 +45,25 @@ GetOptionsFromArray(
     'repair-attempts=i' => \$repair_attempts,
     'repair-timeout=i' => \$repair_timeout,
 ) or die usage();
+
+my $settings = defined($config_path)
+    ? XPerl::Installer::Config->load($config_path) : {};
+my $defaults = $settings->{install} // {};
+$mirror   //= $defaults->{mirror};
+$cache    //= $defaults->{cache};
+$workdir  //= $defaults->{workdir};
+$prefix   //= $defaults->{prefix};
+$registry //= $defaults->{registry};
+
+if (defined $agent) {
+    die "--agent and --repair-command cannot be combined\n"
+        if defined $repair_command;
+    my $profile = $settings->{agents}{$agent}
+        // die "unknown repair agent $agent in config\n";
+    $repair_command = $profile->{command};
+    $repair_attempts //= $profile->{attempts};
+    $repair_timeout //= $profile->{timeout};
+}
 
 my $module = shift @ARGV;
 die usage() if @ARGV;

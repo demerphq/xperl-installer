@@ -5,6 +5,7 @@ README.md
 bin/xperl
 lib/XPerl/Installer.pm
 lib/XPerl/Installer/Build.pm
+lib/XPerl/Installer/Config.pm
 lib/XPerl/Installer/Deps.pm
 lib/XPerl/Installer/Fetch.pm
 lib/XPerl/Installer/Proposal.pm
@@ -12,6 +13,7 @@ lib/XPerl/Installer/Registry.pm
 planning/xperl-package-manager.md
 t/build.t
 t/build_pl.t
+t/config.t
 t/deps.t
 t/environment.t
 t/fetch.t

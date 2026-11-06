@@ -37,6 +37,39 @@ To install the current Sereal releases with local compatibility patches:
 "$prefix/bin/perl" "$prefix/bin/xperl" install --prefix "$prefix" --registry ../xperl-cpan-ports Sereal::Encoder
 ```
 
+## Configuration
+
+`--config FILE` reads a TOML file. The format is intentionally small. CLI
+options override values in `[install]`; `--agent NAME` selects a wrapper from
+`[agents.NAME]` only for that install. No agent runs without `--agent` or
+`--repair-command`.
+
+```toml
+schema = 1
+
+[install]
+prefix = "/home/me/perl5/perlbrew/perls/xperl"
+registry = "/home/me/perldev/xperl-cpan-ports"
+cache = "/home/me/.xperl/cache"
+
+[agents.codex]
+command = "/home/me/bin/xperl-codex-repair"
+attempts = 2
+timeout = 600
+
+[agents.claude]
+command = "/home/me/bin/xperl-claude-repair"
+attempts = 2
+timeout = 600
+```
+
+For example, `xperl install --config config.toml --agent claude
+Module::Name` chooses the Claude wrapper. `--agent codex` chooses the Codex
+wrapper without changing the installer or registry. Wrapper commands may be
+relative to the config file; other relative paths retain their usual meaning
+from the command's working directory. Keep credentials in the wrapper's
+environment, not in this file.
+
 `--cache DIR` selects a download cache directory; the default is
 `$HOME/.xperl/cache`. `--workdir DIR` keeps unpacked builds, logs, and receipts
 separate from downloads; by default they go under the cache's `work/`
@@ -85,11 +118,12 @@ and it leaves color settings such as `NO_COLOR` to the distribution's tests.
 
 ## Optional repair command
 
-`--repair-command PATH` enables an external repair program after a failed
+`--repair-command PATH` or `--agent NAME` enables an external repair program after a failed
 configure, build, or test phase. `--repair-attempts N` limits repair calls;
 the default is two. `--repair-timeout SECONDS` limits each call; the default
-is 600 seconds. The installer never calls a repair program unless this
-option is present. The command must be an executable file. It runs with the
+is 600 seconds. A selected agent profile can supply these limits. The
+installer never calls a repair program without an explicit selection. The
+command must be an executable file. It runs with the
 distribution source directory as its working directory and receives one
 argument: the absolute path to a JSON request file.
 

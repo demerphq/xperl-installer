@@ -11,6 +11,7 @@ use File::Temp qw(tempdir);
 use IO::Compress::Gzip qw(gzip $GzipError);
 use JSON::PP;
 use Test::More;
+use TOML::Tiny;
 
 my $root = abs_path(tempdir(CLEANUP => 1,
                    DIR => $ENV{XPERL_TEST_TMPDIR} // File::Spec->tmpdir));
@@ -78,11 +79,19 @@ AGENT
 close $agent_file or die $!;
 chmod 0755, $agent or die $!;
 
+my $config_path = File::Spec->catfile($root, 'installer.toml');
+open my $config_file, '>:raw', $config_path or die $!;
+print {$config_file} TOML::Tiny->new->encode({
+    schema => 1,
+    install => { mirror => $mirror, cache => $cache, prefix => $prefix },
+    agents => { fixture => { command => $agent, attempts => 1 } },
+});
+close $config_file or die $!;
+
 local $ENV{XPERL_REPAIR_MARKER} = File::Spec->catfile($root, 'request.json');
 my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl');
-open my $pipe, '-|', $^X, $script, 'install', '--mirror', $mirror,
-    '--cache', $cache, '--prefix', $prefix, '--repair-command', $agent,
-    '--repair-attempts', '1', 'Example::Fixable' or die $!;
+open my $pipe, '-|', $^X, $script, 'install', '--config', $config_path,
+    '--agent', 'fixture', 'Example::Fixable' or die $!;
 my $output = do { local $/; <$pipe> };
 ok(close $pipe, 'repair completed');
 my $result = eval { JSON::PP->new->decode($output) };

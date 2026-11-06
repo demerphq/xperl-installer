@@ -331,6 +331,13 @@ Keep package-manager work and core-feature fixes in small reviewable changes.
 The installer should provide real examples for XPerl documentation rather
 than use a feature solely to demonstrate its syntax.
 
+The installed XPerl now bundles TOML::Tiny 0.22, so the standalone installer
+can read a TOML config without bootstrapping a parser from CPAN. The config
+holds installation defaults and named external repair commands. Selecting an
+agent remains explicit for each installation; Codex, Claude, and other
+wrappers all use the same repair protocol. TOML date and time values remain
+strings by default, and the installer does not require DateTime modules.
+
 ## Delivery stages
 
 1. **Resolve and fetch:** implement the XPerl CLI and CPAN release lookup,

@@ -22,6 +22,7 @@ WriteMakefile(
         'JSON::PP'                 => 0,
         'Module::Metadata'         => 0,
         'Parse::CPAN::Meta'        => 0,
+        'TOML::Tiny'               => '0.22',
     },
     TEST_REQUIRES => {
         'IO::Compress::Gzip' => 0,

@@ -1,2 +1,5 @@
+0.002  2026-11-06
+    Add TOML configuration and named external repair agent profiles.
+
 0.001  2026-11-06
     Initial standalone XPerl installer distribution.
