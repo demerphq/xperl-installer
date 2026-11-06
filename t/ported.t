@@ -293,5 +293,13 @@ my $other_work = File::Spec->catdir($root, 'other-work');
 is($status, 0, 'a run with only successes exits zero');
 my $other = by_key(eval { JSON::PP->new->decode($output) } // {});
 is($other->{'OTHER/Patched'}{status}, 'installed', 'other author installs unpatched');
+my $other_summary = do {
+    open my $in, '<', File::Spec->catfile($other_work, qw(install-ported summary.txt))
+        or die $!;
+    local $/; <$in>;
+};
+like($other_summary, qr/^excluded: 11 entries/m,
+     'the readable summary counts excluded entries');
+unlike($other_summary, qr{EXAMPLE/App}, 'excluded entries are not listed one by one');
 
 done_testing();
