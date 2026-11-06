@@ -20,6 +20,7 @@ sub new ($class, %args) {
         needed => CPAN::Meta::Requirements->new,
         visiting => {},
         installed => {},
+        provided => {},
         receipts => [],
     }, $class;
 }
@@ -73,6 +74,7 @@ sub _install ($self, $module, $constraint) {
                 }
             });
         $self->{installed}{$release->{cpan_path}} = 1;
+        $self->_remember_provides($meta) if $meta;
         push @{$self->{receipts}}, $receipt->{receipt};
     }
     die "installed distribution does not provide required $module\n"
@@ -99,9 +101,25 @@ sub _satisfied ($self, $module) {
     my $site = File::Spec->catdir($prefix, 'lib', 'perl5');
     my @inc = ($site, File::Spec->catdir($site, $Config{archname}), @INC);
     my $metadata = Module::Metadata->new_from_module($module, inc => \@inc);
-    return 0 unless $metadata;
+    my $version = $metadata ? $metadata->version // '0'
+        : $self->{provided}{$module};
+    return 0 unless defined $version;
     return $self->{needed}->accepts_module($module,
-                                           $metadata->version // '0');
+                                           $version);
+}
+
+sub _remember_provides ($self, $meta) {
+    my $site = File::Spec->catdir($self->{builder}->{prefix}, 'lib', 'perl5');
+    my $provides = $meta->provides;
+    for my $module (keys %$provides) {
+        my $entry = $provides->{$module};
+        my $file = $entry->{file} // '';
+        next unless $file =~ m{\Alib/([A-Za-z0-9_]+(?:/[A-Za-z0-9_]+)*\.pm)\z};
+        my @parts = split m{/}, $1;
+        next unless -f File::Spec->catfile($site, @parts)
+            || -f File::Spec->catfile($site, $Config{archname}, @parts);
+        $self->{provided}{$module} = $entry->{version} // '0';
+    }
 }
 
 sub _metadata ($archive) {

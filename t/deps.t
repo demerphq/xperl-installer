@@ -27,6 +27,7 @@ File: 02packages.details.txt
 Example::Dependency 1.00 E/EX/EXAMPLE/Example-Dependency-1.00.tar.gz
 Example::Application 1.00 E/EX/EXAMPLE/Example-Application-1.00.tar.gz
 Example::Legacy 1.00 E/EX/EXAMPLE/Example-Legacy-1.00.tar.gz
+Example::Internal undef E/EX/EXAMPLE/Example-Multi-1.00.tar.gz
 INDEX
 gzip \$index => File::Spec->catfile($modules, '02packages.details.txt.gz')
     or die $GzipError;
@@ -64,6 +65,29 @@ for my $name (qw(Dependency Application Legacy)) {
     $tar->write(File::Spec->catfile($releases, "$root_name.tar.gz"), 1);
 }
 
+my $multi_tar = Archive::Tar->new;
+$multi_tar->add_data('Example-Multi-1.00/Makefile.PL',
+    "use ExtUtils::MakeMaker;\nWriteMakefile(NAME => 'Example::Multi', VERSION => '1.00');\n");
+$multi_tar->add_data('Example-Multi-1.00/lib/Example/Multi.pm',
+    "package Example::Multi;\nour \$VERSION = '1.00';\n"
+    . "package Example::Internal;\nsub value { 42 }\n1;\n");
+$multi_tar->add_data('Example-Multi-1.00/t/basic.t',
+    "use Test::More tests => 1; use Example::Multi; is(Example::Internal::value(), 42);\n");
+$multi_tar->add_data('Example-Multi-1.00/META.json', JSON::PP->new->encode({
+    'meta-spec' => { version => 2 },
+    name => 'Example-Multi', version => '1.00',
+    abstract => 'Local installer test', author => ['XPerl'],
+    generated_by => 'XPerl installer test', release_status => 'stable',
+    license => ['perl_5'], dynamic_config => JSON::PP::false,
+    prereqs => {},
+    provides => {
+        'Example::Multi' => { file => 'lib/Example/Multi.pm', version => '1.00' },
+        'Example::Internal' => { file => 'lib/Example/Multi.pm' },
+    },
+}));
+$multi_tar->write(File::Spec->catfile($releases,
+    'Example-Multi-1.00.tar.gz'), 1);
+
 my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl');
 local %ENV = %ENV;
 delete $ENV{PERL_USE_UNSAFE_INC};
@@ -99,6 +123,19 @@ ok($legacy && $legacy->{status} eq 'installed',
    'metadata-free release installs with registry lookup');
 ok(-f File::Spec->catfile($prefix, qw(lib perl5 Example Legacy.pm)),
    'metadata-free release installed into selected prefix');
+
+open my $internal_pipe, '-|', $^X, $script, 'install', '--mirror', $mirror,
+    '--cache', $cache, '--workdir', $workdir, '--prefix', $prefix,
+    'Example::Internal' or die $!;
+my $internal_output = do { local $/; <$internal_pipe> };
+ok(close $internal_pipe, 'internal package installation completed');
+my $internal = eval { JSON::PP->new->decode($internal_output) };
+ok($internal && $internal->{status} eq 'installed',
+   'metadata provides a package without its own file');
+ok(-f File::Spec->catfile($prefix, qw(lib perl5 Example Multi.pm)),
+   'distribution file containing internal package was installed');
+ok(!-f File::Spec->catfile($prefix, qw(lib perl5 Example Internal.pm)),
+   'internal package has no separate file');
 
 my $old_archive = File::Spec->catfile($root, 'old-meta.tar.gz');
 my $old_tar = Archive::Tar->new;
