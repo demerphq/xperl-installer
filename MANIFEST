@@ -23,7 +23,9 @@ t/config.t
 t/deps.t
 t/environment.t
 t/fetch.t
+t/native-prefix.t
 t/parallel.t
+t/platform.t
 t/ported.t
 t/registry.t
 t/repair.t

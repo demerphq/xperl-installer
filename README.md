@@ -169,6 +169,25 @@ after N seconds", and its receipt marks the phase `timed_out`. This keeps one
 hung test, for example a test that runs a command which waits on its input,
 from stalling a long or parallel run.
 
+## Native libraries
+
+Distributions that bind a C library need its headers, libraries and
+pkg-config files. The compiler does not search Homebrew's prefix on Apple
+silicon (`/opt/homebrew`), so by default the installer adds the Homebrew
+installation's `include`, `lib` and `lib/pkgconfig` directories to `CPATH`,
+`LIBRARY_PATH` and `PKG_CONFIG_PATH` for every phase. They come after any
+value already in the environment. The installation is `HOMEBREW_PREFIX` when
+that is set, otherwise on macOS the first of `/opt/homebrew` and `/usr/local`
+that contains `bin/brew`.
+
+`--native-prefix DIR` (repeatable), or `native_prefixes = ["DIR", ...]` in the
+`[install]` table, replaces the detected prefix. `--no-native-prefix` adds
+none. Receipts record the prefixes used in `native_prefixes`.
+
+A distribution whose `Makefile.PL` looks for headers only in a fixed list of
+directories (Image::Scale, Image::Magick) does not see these paths and needs
+a port.
+
 ## Optional repair command
 
 `--repair-command PATH` or `--agent NAME` enables an external repair program after a failed

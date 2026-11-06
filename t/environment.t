@@ -2,6 +2,7 @@ use strict;
 use warnings;
 use FindBin;
 use lib "$FindBin::Bin/../lib";
+use Config;
 use Cwd qw(abs_path);
 use File::Path qw(make_path);
 use File::Spec;
@@ -147,6 +148,45 @@ my $code = 'print JSON::PP->new->encode({map { $_ => $ENV{$_} } @ARGV})';
     my $values = JSON::PP->new->decode(do { local $/; <$input> });
     is($values->{PERL_USE_UNSAFE_INC}, 1,
        'legacy distribution receives cpanm unsafe-inc default');
+}
+
+{
+    my $native = File::Spec->catdir($root, 'native');
+    my $missing = File::Spec->catdir($root, 'missing-native');
+    make_path(map { File::Spec->catdir($native, @$_) }
+              ['include'], ['lib', 'pkgconfig']);
+    my $native_builder = XPerl::Installer::Build->new(
+        prefix => File::Spec->catdir($root, 'prefix'),
+        workdir => File::Spec->catdir($root, 'work'),
+        native_prefixes => [$native, $missing]);
+    my @paths = qw(CPATH LIBRARY_PATH PKG_CONFIG_PATH);
+    local %ENV = %ENV;
+    delete @ENV{@paths};
+    $ENV{CPATH} = '/caller/include';
+    my $log = File::Spec->catfile($root, 'native.log');
+    is($native_builder->_run($root, $log, { phase => 'configure' },
+                             $^X, '-MJSON::PP', '-e', $code, @paths),
+       0, 'native prefix probe succeeds');
+    open my $input, '<', $log or die $!;
+    my $values = JSON::PP->new->decode(do { local $/; <$input> });
+    is_deeply($values, {
+        CPATH => join($Config{path_sep}, '/caller/include',
+                      File::Spec->catdir($native, 'include')),
+        LIBRARY_PATH => File::Spec->catdir($native, 'lib'),
+        PKG_CONFIG_PATH => File::Spec->catdir($native, 'lib', 'pkgconfig'),
+    }, 'native prefixes extend the compiler, linker and pkg-config paths');
+    is($ENV{CPATH}, '/caller/include',
+       'native paths do not escape into the installer process');
+
+    my $plain_log = File::Spec->catfile($root, 'plain-native.log');
+    delete $ENV{CPATH};
+    is($builder->_run($root, $plain_log, { phase => 'build' },
+                      $^X, '-MJSON::PP', '-e', $code, @paths),
+       0, 'probe without native prefixes succeeds');
+    open my $plain, '<', $plain_log or die $!;
+    is_deeply(JSON::PP->new->decode(do { local $/; <$plain> }),
+              { map { $_ => undef } @paths },
+              'no native paths are added unless prefixes are given');
 }
 
 done_testing();

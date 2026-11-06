@@ -13,6 +13,7 @@ use XPerl::Installer::Config;
 use XPerl::Installer::Deps;
 use XPerl::Installer::Fetch;
 use XPerl::Installer::Parallel;
+use XPerl::Installer::Platform;
 use XPerl::Installer::Ported;
 use XPerl::Installer::Registry;
 
@@ -26,10 +27,12 @@ Usage: xperl resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Na
                      [--repair-attempts N] [--repair-timeout SECONDS]
                      [--repair-limit N]
                      [--jobs K] [--phase-timeout SECONDS]
+                     [--native-prefix DIR]... [--no-native-prefix]
                      [--mirror URL|DIR] [--cache DIR] [--workdir DIR] Module::Name...
        xperl install-ported --registry DIR [--config FILE] [--prefix DIR]
                      [--dry-run] [--json] [--resume] [--jobs K]
                      [--phase-timeout SECONDS]
+                     [--native-prefix DIR]... [--no-native-prefix]
                      [--only AUTHOR/Dist]... [--exclude AUTHOR/Dist]...
                      [--agent NAME | --repair-command PATH]
                      [--mirror URL|DIR] [--cache DIR] [--workdir DIR]
@@ -42,13 +45,18 @@ install-ported rebuilds every release recorded as successful in the ports
 registry and writes report.json and summary.txt under WORKDIR/install-ported.
 --phase-timeout SECONDS stops a configure, build, test or install phase, and
 every process it started, after that many seconds (default 3600; 0 disables).
+--native-prefix DIR adds DIR/include, DIR/lib and DIR/lib/pkgconfig to the
+compiler, linker and pkg-config search paths of builds. Without it, the
+Homebrew installation is used (HOMEBREW_PREFIX, or on macOS /opt/homebrew or
+/usr/local). --no-native-prefix adds none.
 USAGE
 }
 
 my $action = shift @ARGV // 'help';
 my ($config_path, $agent, $mirror, $cache, $workdir, $refresh, $prefix,
     $registry, $repair_command, $repair_attempts, $repair_timeout, $repair_limit,
-    $dry_run, $as_json, $resume, @only, @exclude, $jobs, $from, $phase_timeout);
+    $dry_run, $as_json, $resume, @only, @exclude, $jobs, $from, $phase_timeout,
+    @native_prefixes, $no_native_prefix);
 GetOptionsFromArray(
     \@ARGV,
     'config=s' => \$config_path,
@@ -70,6 +78,8 @@ GetOptionsFromArray(
     'exclude=s' => \@exclude,
     'jobs=i' => \$jobs,
     'phase-timeout=i' => \$phase_timeout,
+    'native-prefix=s' => \@native_prefixes,
+    'no-native-prefix' => \$no_native_prefix,
     'from=s' => \$from,
 ) or die usage();
 
@@ -83,6 +93,12 @@ $prefix   //= $defaults->{prefix};
 $registry //= $defaults->{registry};
 $jobs     //= $defaults->{jobs} // 1;
 $phase_timeout //= $defaults->{phase_timeout};
+die "--native-prefix and --no-native-prefix cannot be combined\n"
+    if @native_prefixes && $no_native_prefix;
+@native_prefixes = $no_native_prefix ? ()
+    : @native_prefixes ? @native_prefixes
+    : $defaults->{native_prefixes} ? @{$defaults->{native_prefixes}}
+    : XPerl::Installer::Platform::native_prefixes();
 die "--jobs must be a positive integer\n" unless $jobs =~ /\A[1-9]\d*\z/;
 
 if (defined $agent) {
@@ -127,6 +143,7 @@ sub builder ($ports) {
         (defined $repair_limit ? (repair_limit => $repair_limit) : ()),
         (defined $repair_timeout ? (repair_timeout => $repair_timeout) : ()),
         (defined $phase_timeout ? (phase_timeout => $phase_timeout) : ()),
+        native_prefixes => [@native_prefixes],
     );
 }
 

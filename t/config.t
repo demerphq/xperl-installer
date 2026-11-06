@@ -66,6 +66,18 @@ like($ok ? '' : $@, qr/install\.phase_timeout must be a non-negative integer/,
      'a non-numeric phase timeout is rejected');
 
 open $output, '>:raw', $path or die $!;
+print {$output} "schema = 1\n[install]\nnative_prefixes = ['/opt/homebrew']\n";
+close $output or die $!;
+is_deeply(XPerl::Installer::Config->load($path)->{install}{native_prefixes},
+          ['/opt/homebrew'], 'native prefixes are loaded');
+open $output, '>:raw', $path or die $!;
+print {$output} "schema = 1\n[install]\nnative_prefixes = '/opt/homebrew'\n";
+close $output or die $!;
+$ok = eval { XPerl::Installer::Config->load($path); 1 };
+like($ok ? '' : $@, qr/install\.native_prefixes must be a list/,
+     'a single native prefix string is rejected');
+
+open $output, '>:raw', $path or die $!;
 print {$output} "schema = 1\n[agents.claude]\ncommand = ''\n";
 close $output or die $!;
 $ok = eval { XPerl::Installer::Config->load($path); 1 };
