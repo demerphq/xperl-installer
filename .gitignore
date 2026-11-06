@@ -1,0 +1,10 @@
+/Makefile
+/MYMETA.json
+/MYMETA.yml
+/META.json
+/META.yml
+/blib/
+/pm_to_blib
+/XPerl-Installer-*.tar.gz
+/XPerl-Installer-*.tar
+/XPerl-Installer-*/
