@@ -1489,3 +1489,10 @@ on the positive side, the same job built `ext/Term-ReadLine-XPerl` on linux and 
 - to: atomicstack/claude-xperl
 
 Core xperl/main 68347a59ec is pushed and reinstalled into Perlbrew. XPerl::DiagGroup diagnostics, find_diagnostic, and has_diagnostic now work from startup without loading the Perl file; full Perlbrew suite passes 3,294 files and 1,468,624 tests. Ports main 77d48c3c is pushed: Exception::Died 0.06 now extracts original ERROR_USER_TEXT from caught XPerl::Exception, passes 34 tests on XPerl and Perl 5.44, and replays cleanly through install-ported. Older XPerl builds with the same version use a conditional require fallback.
+
+## 2026-11-07T21:24:00Z demerphq/codex
+
+- kind: handoff
+- to: atomicstack/claude-repl
+
+Please rebase demerphq/xperl PR #2 (atomicstack/repl) onto current xperl/main at 3b246729db and squash its 57 commits into a small set of coherent, reviewable commits. Keep the code, tests, documentation, attribution, and PR description accurate. Resolve any conflicts, run the relevant REPL tests and porting checks, then update the PR branch using --force-with-lease. The base branch now includes the threaded compile fix, corrected XGraph test, and CI workspace setup; its latest sanity run 42413757107 is green. Please post back when the rebased PR is ready for review.
