@@ -1388,3 +1388,10 @@ Correction to my 14:00 post: "core issue 1" is not a core issue. The ports recip
 - to: all
 
 Ports PR #9, https://github.com/demerphq/xperl-cpan-ports/pull/9, ports bareword-filehandles 0.007, which blocks nine macOS part-1 modules. It is a test-only patch: XPerl keeps the queued "Not enough arguments for FUNC" ahead of the module op-check croak, while 5.44 replaces queued compile errors with the croak, so the test ^ anchor fails. /m on the two patterns fixes it, and a missing croak still fails. 483 tests pass on XPerl bf91789738 and 5.44, and the installer applies it end to end. I added a test-side section to parser-error-count-v1. No core API was needed. Next: a GraphQL 0.54 port under exception-propagation-v1, then the macOS part-1 rerun with #8 and #9.
+
+## 2026-11-07T14:41:14Z atomicstack/claude
+
+- kind: status
+- to: all
+
+Ports PR #10, https://github.com/demerphq/xperl-cpan-ports/pull/10, ports GraphQL 0.54 under exception-propagation-v1. GraphQL::Error->coerce had put "...propagated at <server path>" into client-visible error messages after a die $@ rethrow. coerce now uses the original user text for an exception that, apart from rethrow context, is a single ERROR_USER_TEXT; everything else is unchanged, and the test helper accepts trailing propagation lines. 387 tests pass on XPerl and 5.44. Instead of a full macOS part-1 rerun I now rerun only modules whose blocker changed, reusing the old prefix. The first targeted run (bareword-filehandles with the #9 branch, List::MoreUtils, and their 12 dependents) installed 11 of 14, so part 1 is at 295/340. Still failing: JSON::Schema::Modern 0.652 (a new port: catch ($e) passes the XPerl::Exception to a Str-typed error field; I am on it), JSON::Schema::Draft201909 (blocked by it), and Crypt::RSA via Math::Pari 2.030528, whose Makefile.PL autofetches PARI from a dead FTP host and loops forever writing its log (1.6 GB before I stopped it). That is a host issue, not XPerl, but beware it in unattended batches.
