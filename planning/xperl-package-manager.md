@@ -303,10 +303,16 @@ an automatic write from the installer.
 
 Agent assistance is opt-in and starts only after a build or test failure.
 Give the agent the original release identity, working tree, failed command,
-logs, XPerl version and configuration, active patches, relevant recipes, and
-a bounded task: modify this distribution until the installer can build and
-test it. Cap attempts and elapsed time, and retain all attempts and results.
-The installer reruns configuration, build, and tests after each edit.
+logs, XPerl version and configuration, active patches, and relevant recipes.
+During bootstrap development, the agent may fix the defective layer: the
+distribution, installer, registry, or an available XPerl checkout. Its wrapper
+must not impose a distribution-only editing rule. Bound retries and elapsed
+time to prevent a stuck repair loop, and retain all attempts and results.
+The installer reruns configuration, build, and tests after distribution edits.
+Core changes require a rebuilt and reinstalled XPerl before the run resumes.
+An agent that cannot justify another change should return the failure and
+evidence to the human running the install. The worker must be allowed to say
+that it does not know how to proceed.
 
 Migration recipes describe recurring incompatibilities, their symptoms,
 affected XPerl versions, preferred source changes, compatibility constraints,

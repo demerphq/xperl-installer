@@ -106,13 +106,13 @@ cache = "/home/me/.xperl/cache"
 
 [agents.codex]
 command = "/home/me/bin/xperl-codex-repair"
-attempts = 4
+attempts = 16
 timeout = 600
 interval = 10
 
 [agents.claude]
 command = "/home/me/bin/xperl-claude-repair"
-attempts = 4
+attempts = 16
 timeout = 600
 interval = 10
 ```
@@ -245,8 +245,9 @@ a port.
 
 `--repair-command PATH` or `--agent NAME` enables an external repair program after a failed
 configure, build, or test phase. `--repair-attempts N` limits repair calls
-for one release; the default is four. `--repair-timeout SECONDS` limits each
-call to 600 seconds by default. An unchanged source edit stops retries early.
+for one release; the default is sixteen. `--repair-timeout SECONDS` limits each
+call to 600 seconds by default. This is a hang guard, not a measure of repair
+quality. An unchanged source edit stops retries early.
 `--repair-interval SECONDS` spaces agent call starts across installer processes
 owned by the same user; the default is ten seconds.
 
@@ -269,12 +270,22 @@ The request has `schema: 1`, the module and CPAN archive identity, source
 digest, XPerl executable and version, attempt number, source directory,
 failed phase, command, log path, and `response_path`. When a registry patch
 set names migration recipes, `recipes` contains their IDs and absolute
-Markdown paths. The
-program should edit the source tree and exit zero when ready for another
+Markdown paths. If a registry is configured, `registry` gives its root.
+The repair program may inspect and change any available checkout needed to
+resolve the failure, including the installer, registry, or XPerl core during
+bootstrap development. The wrapper determines which checkouts are available.
+The program should exit zero when a source edit is ready for another
 build. A nonzero exit or no source change stops repair. The installer reruns
 configuration,
 build, and tests after each successful repair call, and records every phase
 and request in the receipt. Installation runs only after the tests pass.
+
+The installer records a patch only for changes to the CPAN distribution. If
+the repair changes the installer or registry, the worker must review and
+commit that change separately. A core change requires rebuilding and
+reinstalling XPerl, then resuming with the installed interpreter; the current
+process cannot switch interpreters. These are workflow requirements, not a
+restriction on what the repair worker may investigate or edit.
 
 When the log identifies a missing CPAN prerequisite that the release did not
 declare, the repair program should leave the source alone and write a JSON
@@ -290,8 +301,8 @@ response at `response_path`:
 
 The installer adds the module to its dependency graph, builds it, then retries
 the release. `range` may specify a required version; the default is `0`.
-The response file lives inside the distribution source directory so a repair
-agent restricted to that directory can write it.
+The response file lives inside the distribution source directory, beside the
+files being repaired.
 
 When the log identifies a missing host dependency, the repair program should
 instead write:
@@ -314,6 +325,25 @@ the host's package manager or other reliable evidence. `kind` may instead be
 installer records the action in the receipt and final JSON, stops retrying
 that release, and continues unrelated builds. It never runs the suggested
 command itself.
+
+The repair worker may return `manual_step` when it cannot find a justified
+next change. It should say what failed and what the human should inspect,
+rather than guess or keep retrying. For example:
+
+```json
+{
+  "schema": 1,
+  "status": "needs_user_action",
+  "action": {
+    "kind": "manual_step",
+    "message": "I cannot identify the cause of the XS crash; inspect the test log and backtrace"
+  }
+}
+```
+
+Agent wrappers should explicitly permit this answer. A report of uncertainty
+is useful work: the installer keeps the failure evidence and can resume after
+a human supplies a fix or new information.
 
 Every `install` saves its request list and effective options as
 `WORKDIR/install-session.json`. After completing a missing dependency, run

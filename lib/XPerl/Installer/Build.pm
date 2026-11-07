@@ -34,7 +34,7 @@ sub new ($class, %args) {
             unless defined $repair_command && -f $repair_command
                 && -x $repair_command;
     }
-    my $repair_attempts = $args{repair_attempts} // ($repair_command ? 4 : 0);
+    my $repair_attempts = $args{repair_attempts} // ($repair_command ? 16 : 0);
     die "repair attempts require a repair command\n"
         if $repair_attempts && !$repair_command;
     die "repair attempts must be a non-negative integer\n"
@@ -320,8 +320,8 @@ sub install ($self, $release, %options) {
                 }
                 my $request_path = File::Spec->catfile($work,
                                                         "repair-$attempt.json");
-                # The agent may write only inside the distribution source.
-                # Keep its response there, even though logs live in $work.
+                # Keep the protocol response with the source so a wrapper
+                # needs no write access to the installer's work directory.
                 my $response_path = File::Spec->catfile($source,
                                                         ".xperl-repair-$attempt-response.json");
                 my $request = {
@@ -340,6 +340,8 @@ sub install ($self, $release, %options) {
                     failed_log => $log,
                     response_path => $response_path,
                     recipes => \@recipes,
+                    ($self->{registry}
+                        ? (registry => $self->{registry}{path}) : ()),
                 };
                 open my $request_file, '>', $request_path
                     or die "cannot write $request_path: $!\n";

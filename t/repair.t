@@ -18,9 +18,10 @@ my $root = abs_path(tempdir(CLEANUP => 1,
 my $mirror = File::Spec->catdir($root, 'mirror');
 my $cache = File::Spec->catdir($root, 'cache');
 my $prefix = File::Spec->catdir($root, 'prefix');
+my $registry = File::Spec->catdir($root, 'registry');
 my $modules = File::Spec->catdir($mirror, 'modules');
 my $releases = File::Spec->catdir($mirror, qw(authors id E EX EXAMPLE));
-make_path($modules, $releases);
+make_path($modules, $releases, $registry);
 
 my $index = <<'INDEX';
 File: 02packages.details.txt
@@ -137,7 +138,7 @@ close $config_file or die $!;
 local $ENV{XPERL_REPAIR_MARKER} = File::Spec->catfile($root, 'request.json');
 my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl-install');
 open my $pipe, '-|', $^X, $script, 'install', '--config', $config_path,
-    '--agent', 'fixture', 'Example::Fixable' or die $!;
+    '--agent', 'fixture', '--registry', $registry, 'Example::Fixable' or die $!;
 my $output = do { local $/; <$pipe> };
 ok(close $pipe, 'repair completed');
 my $result = eval { JSON::PP->new->decode($output) };
@@ -163,6 +164,7 @@ unlike($patch, qr/tmp2/, 'patch excludes a test scratch file');
 open my $request_file, '<', $ENV{XPERL_REPAIR_MARKER} or die $!;
 my $request = JSON::PP->new->decode(do { local $/; <$request_file> });
 is($request->{failed_phase}, 'test', 'agent received failed phase');
+is($request->{registry}, $registry, 'agent received the registry location');
 ok(-f $request->{failed_log}, 'agent received persistent test log');
 like($request->{response_path}, qr/\A\Q$request->{source}\E\//,
      'agent response stays inside its writable source directory');
