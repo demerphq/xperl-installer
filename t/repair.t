@@ -30,13 +30,14 @@ Example::Fixable 1.00 E/EX/EXAMPLE/Example-Fixable-1.00.tar.gz
 Example::Unfixable 1.00 E/EX/EXAMPLE/Example-Unfixable-1.00.tar.gz
 Example::Slow 1.00 E/EX/EXAMPLE/Example-Slow-1.00.tar.gz
 Example::NeedsLibrary 1.00 E/EX/EXAMPLE/Example-NeedsLibrary-1.00.tar.gz
+Example::Unknown 1.00 E/EX/EXAMPLE/Example-Unknown-1.00.tar.gz
 Example::NeedsPerl 1.00 E/EX/EXAMPLE/Example-NeedsPerl-1.00.tar.gz
 Example::Extra 1.00 E/EX/EXAMPLE/Example-Extra-1.00.tar.gz
 INDEX
 gzip \$index => File::Spec->catfile($modules, '02packages.details.txt.gz')
     or die $GzipError;
 
-for my $name (qw(Fixable Unfixable Slow NeedsLibrary NeedsPerl Extra)) {
+for my $name (qw(Fixable Unfixable Slow NeedsLibrary Unknown NeedsPerl Extra)) {
     my $dist = "Example-$name-1.00";
     my $tar = Archive::Tar->new;
     $tar->add_data("$dist/Makefile.PL",
@@ -78,6 +79,18 @@ if ($request->{module} eq 'Example::NeedsLibrary') {
             kind => 'system_dependency',
             message => 'Install the example native library',
             install_hint => 'sudo apt install libexample-dev',
+        },
+    });
+    close $out or die $!;
+    exit 0;
+}
+if ($request->{module} eq 'Example::Unknown') {
+    open my $out, '>', $request->{response_path} or die $!;
+    print {$out} JSON::PP->new->encode({
+        schema => 1, status => 'needs_user_action',
+        action => {
+            kind => 'manual_step',
+            message => 'I cannot identify the test failure; inspect the test log',
         },
     });
     close $out or die $!;
@@ -224,6 +237,25 @@ is($action_record->{user_action}{message},
    'Install the example native library', 'receipt preserves the diagnosis');
 is(scalar(grep { $_->{name} eq 'repair' } @{$action_record->{phases}}), 1,
    'the installer does not retry a missing host dependency');
+
+# An agent can admit uncertainty without making another source edit. The
+# scheduler records the handoff and keeps an unrelated release moving.
+open $pipe, '-|', $^X, $script, 'install', '--mirror', $mirror,
+    '--cache', $cache, '--prefix', File::Spec->catdir($root, 'unknown-prefix'),
+    '--workdir', File::Spec->catdir($root, 'unknown-work'),
+    '--repair-command', $agent, '--repair-interval', '0',
+    'Example::Unknown', 'Example::Extra' or die $!;
+my $unknown_output = do { local $/; <$pipe> };
+ok(!close $pipe, 'unattended run reports an uncertain repair');
+my $unknown_result = JSON::PP->new->decode($unknown_output);
+is($unknown_result->{user_actions}[0]{kind}, 'manual_step',
+   'uncertain repair reaches the human action queue');
+like($unknown_result->{user_actions}[0]{message}, qr/inspect the test log/,
+     'the handoff keeps the agent diagnosis');
+my ($extra_result) = grep { $_->{module} eq 'Example::Extra' }
+                     @{$unknown_result->{modules}};
+is($extra_result->{status}, 'installed',
+   'independent release installs while a repair needs human help');
 
 open my $native_library, '>', $ready or die $!;
 close $native_library or die $!;

@@ -346,7 +346,10 @@ rather than guess or keep retrying. For example:
 Agent wrappers should pass the request's `guidance` to the agent and
 explicitly permit this answer. A report of uncertainty is useful work: the
 installer keeps the failure evidence and can resume after a human supplies
-a fix or new information.
+a fix or new information. In unattended mode, it continues independent
+releases, reports the action in `user_actions`, exits with a failed status,
+and includes a `resume` command. It does not wait for human input unless
+`--action-shell` was explicitly requested in an interactive terminal.
 
 Every `install` saves its request list and effective options as
 `WORKDIR/install-session.json`. After completing a missing dependency, run
