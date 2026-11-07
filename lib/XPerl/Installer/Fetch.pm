@@ -131,8 +131,10 @@ sub _check_archive ($archive) {
     die "empty archive: $archive\n" unless @files;
     for my $file (@files) {
         my $name = $file->full_path;
+        $name =~ s{\A\./}{};
         die "unsafe archive member: $name\n"
-            if $name =~ m{\A/} || $name =~ m{(?:\A|/)\.\.? (?:/|\z)}x;
+            if !length($name) || $name =~ m{\A/|(?:\A|/)\.\.?(?:/|\z)}x
+                || $name =~ /[\\:\0]/;
         die "archive contains a link: $name\n"
             if $file->is_symlink || $file->is_hardlink;
     }

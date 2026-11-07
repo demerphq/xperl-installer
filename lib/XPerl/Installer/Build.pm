@@ -530,6 +530,7 @@ sub _unpack ($archive, $work) {
     my %roots;
     for my $file (@files) {
         my $name = $file->full_path;
+        $name =~ s{\A\./}{};
         my ($root) = $name =~ m{\A([^/]+)};
         die "unsafe archive member: $name\n"
             unless defined $root && $name !~ m{(?:\A|/)\.\.? (?:/|\z)}x

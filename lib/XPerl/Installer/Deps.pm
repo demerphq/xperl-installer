@@ -277,7 +277,7 @@ sub _metadata ($archive) {
     $tar->read($archive, 1) or die "cannot read $archive\n";
     my @files = $tar->get_files;
     for my $suffix (qw(META.json META.yml)) {
-        my ($file) = grep { $_->full_path =~ m{\A[^/]+/\Q$suffix\E\z} }
+        my ($file) = grep { $_->full_path =~ m{\A(?:\./)?[^/]+/\Q$suffix\E\z} }
             @files;
         next unless $file;
         my $content = $file->get_content;

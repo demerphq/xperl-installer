@@ -114,6 +114,30 @@ eval { $builder->install($no_makefile_release) };
 like($@, qr/configure did not produce Makefile/,
      'zero-exit configure without a Makefile is rejected');
 
+# Some CPAN archives prefix every member with ./ before the source root.
+# The prefix carries no path traversal, and metadata and extraction must
+# agree on the resulting root.
+my $dot_path = File::Spec->catfile($releases, 'Example-Dot-1.00.tar.gz');
+my $dot_tar = Archive::Tar->new;
+$dot_tar->add_data('./Example-Dot-1.00/META.json',
+                   '{"name":"Example-Dot","version":"1.00"}');
+$dot_tar->add_data('./Example-Dot-1.00/Makefile.PL', <<'MAKEFILE');
+use ExtUtils::MakeMaker;
+WriteMakefile(NAME => 'Example::Dot', VERSION => '1.00');
+MAKEFILE
+$dot_tar->add_data('./Example-Dot-1.00/lib/Example/Dot.pm',
+                   "package Example::Dot;\nour \$VERSION = '1.00';\n1;\n");
+$dot_tar->write($dot_path, 1);
+is(XPerl::Installer::Fetch::_check_archive($dot_path), 3,
+   'accepts an archive with a leading dot directory');
+is(XPerl::Installer::Deps::_metadata($dot_path)->name, 'Example-Dot',
+   'reads metadata below a leading dot directory');
+my $dot_work = File::Spec->catdir($root, 'dot-work');
+make_path($dot_work);
+is(XPerl::Installer::Build::_unpack($dot_path, $dot_work),
+   File::Spec->catdir($dot_work, 'Example-Dot-1.00'),
+   'extracts a leading dot directory under the source root');
+
 # ZIP releases follow the same configure, build, test, and install path.
 my $zip_path = File::Spec->catfile($releases, 'Example-Zipped-1.00.zip');
 my $zip = IO::Compress::Zip->new($zip_path,
