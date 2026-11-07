@@ -165,6 +165,8 @@ open my $request_file, '<', $ENV{XPERL_REPAIR_MARKER} or die $!;
 my $request = JSON::PP->new->decode(do { local $/; <$request_file> });
 is($request->{failed_phase}, 'test', 'agent received failed phase');
 is($request->{registry}, $registry, 'agent received the registry location');
+like($request->{guidance}, qr/not making progress.*manual_step/,
+     'agent receives guidance to hand an unproductive repair to a human');
 ok(-f $request->{failed_log}, 'agent received persistent test log');
 like($request->{response_path}, qr/\A\Q$request->{source}\E\//,
      'agent response stays inside its writable source directory');

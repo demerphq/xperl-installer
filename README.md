@@ -271,6 +271,8 @@ digest, XPerl executable and version, attempt number, source directory,
 failed phase, command, log path, and `response_path`. When a registry patch
 set names migration recipes, `recipes` contains their IDs and absolute
 Markdown paths. If a registry is configured, `registry` gives its root.
+`guidance` tells provider wrappers to stop an unproductive debug/change loop
+and return an honest handoff to the human.
 The repair program may inspect and change any available checkout needed to
 resolve the failure, including the installer, registry, or XPerl core during
 bootstrap development. The wrapper determines which checkouts are available.
@@ -341,9 +343,10 @@ rather than guess or keep retrying. For example:
 }
 ```
 
-Agent wrappers should explicitly permit this answer. A report of uncertainty
-is useful work: the installer keeps the failure evidence and can resume after
-a human supplies a fix or new information.
+Agent wrappers should pass the request's `guidance` to the agent and
+explicitly permit this answer. A report of uncertainty is useful work: the
+installer keeps the failure evidence and can resume after a human supplies
+a fix or new information.
 
 Every `install` saves its request list and effective options as
 `WORKDIR/install-session.json`. After completing a missing dependency, run

@@ -340,6 +340,10 @@ sub install ($self, $release, %options) {
                     failed_log => $log,
                     response_path => $response_path,
                     recipes => \@recipes,
+                    guidance => 'Do not get stuck in a debug/change loop. '
+                        . 'If you are not making progress, return '
+                        . 'needs_user_action with kind manual_step and tell '
+                        . 'the human what you tried and what to inspect.',
                     ($self->{registry}
                         ? (registry => $self->{registry}{path}) : ()),
                 };
