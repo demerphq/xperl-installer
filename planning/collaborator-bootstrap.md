@@ -108,7 +108,7 @@ export PERL5LIB="$prefix/lib/perl5${PERL5LIB:+:$PERL5LIB}"
 make
 make test
 make install
-"$prefix/bin/perl" "$prefix/bin/xperl" resolve Sereal::Decoder
+"$prefix/bin/perl" "$prefix/bin/xperl-install" resolve Sereal::Decoder
 ```
 
 Use the make program reported by `"$prefix/bin/perl" -MConfig -e
@@ -126,7 +126,7 @@ XPerl's core libraries remain on its ordinary `@INC`. For example, from
 validation_prefix="$PWD/tmp/ported-prefix"
 mkdir -p "$validation_prefix"
 export PERL5LIB="$validation_prefix/lib/perl5:$prefix/lib/perl5"
-"$prefix/bin/perl" "$prefix/bin/xperl" install \
+"$prefix/bin/perl" "$prefix/bin/xperl-install" install \
     --prefix "$validation_prefix" \
     --registry "$PWD/xperl-cpan-ports" \
     Sereal::Decoder

@@ -88,7 +88,7 @@ $multi_tar->add_data('Example-Multi-1.00/META.json', JSON::PP->new->encode({
 $multi_tar->write(File::Spec->catfile($releases,
     'Example-Multi-1.00.tar.gz'), 1);
 
-my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl');
+my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl-install');
 local %ENV = %ENV;
 delete $ENV{PERL_USE_UNSAFE_INC};
 open my $pipe, '-|', $^X, $script, 'install', '--mirror', $mirror,

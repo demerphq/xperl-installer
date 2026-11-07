@@ -85,7 +85,7 @@ AGENT
 close $agent_file or die $!;
 chmod 0755, $agent or die $!;
 
-my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl');
+my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl-install');
 my $run = 0;
 sub install ($module, @extra) {
     ++$run;

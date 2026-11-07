@@ -182,7 +182,7 @@ write_json(File::Spec->catfile($patched_dir, 'index.json'), {
     }],
 });
 
-my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl');
+my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl-install');
 sub xperl (@arguments) {
     open my $pipe, '-|', $^X, $script, @arguments or die $!;
     my $output = do { local $/; <$pipe> };

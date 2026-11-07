@@ -12,7 +12,7 @@ WriteMakefile(
     AUTHOR           => 'XPerl contributors',
     LICENSE          => 'perl',
     MIN_PERL_VERSION => '5.45.5',
-    EXE_FILES        => ['bin/xperl'],
+    EXE_FILES        => ['bin/xperl-install'],
     PREREQ_PM        => {
         'Archive::Tar'             => 0,
         'CPAN::Meta'               => 0,

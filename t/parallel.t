@@ -123,7 +123,7 @@ my $index = "File: 02packages.details.txt\n\n" . join("\n", sort @index) . "\n";
 gzip \$index => File::Spec->catfile($mirror, 'modules', '02packages.details.txt.gz')
     or die $GzipError;
 
-my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl');
+my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl-install');
 my $run = 0;
 sub install (@args) {
     ++$run;

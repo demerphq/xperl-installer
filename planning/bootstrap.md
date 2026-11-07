@@ -54,7 +54,7 @@ From `perldev/xperl-installer/`:
 make
 make test
 make install
-"$prefix/bin/perl" "$prefix/bin/xperl" help
+"$prefix/bin/perl" "$prefix/bin/xperl-install" help
 ```
 
 Use the make program printed by `"$prefix/bin/perl" -MConfig -e
@@ -73,7 +73,7 @@ validation_prefix="$PWD/tmp/validation-prefix"
 workdir="$PWD/tmp/validation-work"
 mkdir -p "$validation_prefix"
 export PERL5LIB="$validation_prefix/lib/perl5"
-"$prefix/bin/perl" "$prefix/bin/xperl" install \
+"$prefix/bin/perl" "$prefix/bin/xperl-install" install \
     --prefix "$validation_prefix" --workdir "$workdir" \
     --registry "$PWD/xperl-cpan-ports" Sereal::Decoder
 ```
@@ -83,7 +83,7 @@ defaults to `$HOME/.xperl/cache`; keep it across runs. Use a fresh prefix and
 work directory when checking whether a recorded port still works. The
 installer writes phase logs and receipts under the work directory. If a run
 reports a missing host dependency, install it and resume with
-`"$prefix/bin/perl" "$prefix/bin/xperl" install --resume --workdir "$workdir"`.
+`"$prefix/bin/perl" "$prefix/bin/xperl-install" install --resume --workdir "$workdir"`.
 
 To check all recorded successful ports, first preview the selection, then
 run the batch with four build workers. An AI repair worker runs only when an
@@ -94,9 +94,9 @@ validation_prefix="$PWD/tmp/ported-prefix"
 workdir="$PWD/tmp/ported-work"
 mkdir -p "$validation_prefix"
 export PERL5LIB="$validation_prefix/lib/perl5"
-"$prefix/bin/perl" "$prefix/bin/xperl" install-ported --dry-run \
+"$prefix/bin/perl" "$prefix/bin/xperl-install" install-ported --dry-run \
     --registry "$PWD/xperl-cpan-ports"
-"$prefix/bin/perl" "$prefix/bin/xperl" install-ported \
+"$prefix/bin/perl" "$prefix/bin/xperl-install" install-ported \
     --registry "$PWD/xperl-cpan-ports" --prefix "$validation_prefix" \
     --workdir "$workdir" --jobs 4
 ```

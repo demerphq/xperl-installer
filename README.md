@@ -21,19 +21,19 @@ prefix="$HOME/perl5/perlbrew/perls/xperl"
 make
 make test
 make install
-"$prefix/bin/perl" "$prefix/bin/xperl" resolve Sereal::Decoder
-"$prefix/bin/perl" "$prefix/bin/xperl" fetch Sereal::Decoder
-"$prefix/bin/perl" "$prefix/bin/xperl" install --prefix "$prefix" Example::Tiny
+"$prefix/bin/perl" "$prefix/bin/xperl-install" resolve Sereal::Decoder
+"$prefix/bin/perl" "$prefix/bin/xperl-install" fetch Sereal::Decoder
+"$prefix/bin/perl" "$prefix/bin/xperl-install" install --prefix "$prefix" Example::Tiny
 ```
 
 The installed interpreter runs the installer and every CPAN build and test.
 A plain `make install` puts the installer in the interpreter's site library,
 which its `@INC` already searches, so no `PERL5LIB` is needed. During
-development, the installed XPerl can run `bin/xperl` from this checkout. The
+development, the installed XPerl can run `bin/xperl-install` from this checkout. The
 source directory does not enter CPAN build paths. End users can run ordinary
 installs without changing or rebuilding XPerl.
 
-Because `--prefix` above is the interpreter's own prefix, `xperl install`
+Because `--prefix` above is the interpreter's own prefix, `xperl-install install`
 puts modules in its site library too (see [Install layout](#install-layout)).
 The earlier local::lib-style setup still works: install with
 `Makefile.PL INSTALL_BASE="$prefix"`, pass `--layout install_base`, and export
@@ -42,8 +42,8 @@ The earlier local::lib-style setup still works: install with
 To install the current Sereal releases with local compatibility patches:
 
 ```sh
-"$prefix/bin/perl" "$prefix/bin/xperl" install --prefix "$prefix" --registry ../xperl-cpan-ports Sereal::Decoder
-"$prefix/bin/perl" "$prefix/bin/xperl" install --prefix "$prefix" --registry ../xperl-cpan-ports Sereal::Encoder
+"$prefix/bin/perl" "$prefix/bin/xperl-install" install --prefix "$prefix" --registry ../xperl-cpan-ports Sereal::Decoder
+"$prefix/bin/perl" "$prefix/bin/xperl-install" install --prefix "$prefix" --registry ../xperl-cpan-ports Sereal::Encoder
 ```
 
 ## Finding modules affected by a core change
@@ -53,8 +53,8 @@ Give it a Perl compatible regular expression for the changed API or internal
 structure. For the XPerl hash storage change, start with:
 
 ```sh
-"$prefix/bin/perl" "$prefix/bin/xperl" scan-impact --pattern 'HvARRAY|HeNEXT|HeSHARED_NEXT'
-"$prefix/bin/perl" "$prefix/bin/xperl" scan-impact --pattern 'HvARRAY|HeNEXT|HeSHARED_NEXT' --json > hash-candidates.json
+"$prefix/bin/perl" "$prefix/bin/xperl-install" scan-impact --pattern 'HvARRAY|HeNEXT|HeSHARED_NEXT'
+"$prefix/bin/perl" "$prefix/bin/xperl-install" scan-impact --pattern 'HvARRAY|HeNEXT|HeSHARED_NEXT' --json > hash-candidates.json
 ```
 
 The default file filter is `*.c, *.xs, *.h, *.inc`, and the default ignore
@@ -114,7 +114,7 @@ timeout = 600
 interval = 10
 ```
 
-For example, `xperl install --config config.toml --agent claude
+For example, `xperl-install install --config config.toml --agent claude
 Module::Name` chooses the Claude wrapper. `--agent codex` chooses the Codex
 wrapper without changing the installer or registry. Wrapper commands may be
 relative to the config file; other relative paths retain their usual meaning
@@ -314,7 +314,7 @@ command itself.
 
 Every `install` saves its request list and effective options as
 `WORKDIR/install-session.json`. After completing a missing dependency, run
-`xperl install --resume --workdir WORKDIR`. Installed modules satisfy the
+`xperl-install install --resume --workdir WORKDIR`. Installed modules satisfy the
 retry, while failed and blocked releases are attempted again. The saved
 session requires the same installed XPerl executable and version.
 `--action-shell` offers an interactive alternative for `install` and
@@ -350,9 +350,9 @@ keep one download cache across runs:
 ```sh
 validation_prefix="$PWD/tmp/ported-prefix"
 export PERL5LIB="$validation_prefix/lib/perl5:$prefix/lib/perl5"
-"$prefix/bin/perl" "$prefix/bin/xperl" install-ported --dry-run \
+"$prefix/bin/perl" "$prefix/bin/xperl-install" install-ported --dry-run \
     --registry ../xperl-cpan-ports
-"$prefix/bin/perl" "$prefix/bin/xperl" install-ported \
+"$prefix/bin/perl" "$prefix/bin/xperl-install" install-ported \
     --registry ../xperl-cpan-ports --prefix "$validation_prefix" \
     --workdir "$PWD/tmp/ported-work"
 ```

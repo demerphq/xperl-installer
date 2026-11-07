@@ -1,4 +1,7 @@
 Unreleased
+    Rename the command to xperl-install; the XPerl interpreter keeps the
+    xperl name. Update resume instructions and bootstrap examples.
+    Add scan-impact to find candidate CPAN source affected by core changes.
     Load an installed module in a child interpreter when static metadata
     cannot evaluate its version. This lets Thrift's modules use their shared
     runtime version for both versioned and unversioned prerequisites.

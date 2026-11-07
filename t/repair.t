@@ -135,7 +135,7 @@ print {$config_file} TOML::Tiny->new->encode({
 close $config_file or die $!;
 
 local $ENV{XPERL_REPAIR_MARKER} = File::Spec->catfile($root, 'request.json');
-my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl');
+my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl-install');
 open my $pipe, '-|', $^X, $script, 'install', '--config', $config_path,
     '--agent', 'fixture', 'Example::Fixable' or die $!;
 my $output = do { local $/; <$pipe> };

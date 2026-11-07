@@ -77,7 +77,7 @@ like($@, qr/unsafe archive member/, 'rejects ZIP member path traversal');
 eval { $fetcher->resolve('../Example::Tiny') };
 like($@, qr/invalid CPAN module name/, 'rejects an unsafe module name');
 
-my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl');
+my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl-install');
 open my $pipe, '-|', $^X, $script, 'resolve', '--mirror', $mirror,
     '--cache', $cache, 'Example::Tiny' or die $!;
 my $output = do { local $/; <$pipe> };

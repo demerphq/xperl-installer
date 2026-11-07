@@ -54,7 +54,7 @@ is(Example::Tiny::answer(), 42, 'module works');
 TEST
 $tar->write(File::Spec->catfile($releases, 'Example-Tiny-1.00.tar.gz'), 1);
 
-my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl');
+my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl-install');
 open my $pipe, '-|', $^X, $script, 'install', '--mirror', $mirror,
     '--cache', $cache, '--prefix', $prefix, 'Example::Tiny' or die $!;
 my $output = do { local $/; <$pipe> };

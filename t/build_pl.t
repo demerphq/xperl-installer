@@ -87,7 +87,7 @@ BUILD_PL
     $tar->write(File::Spec->catfile($releases, "$dist.tar.gz"), 1);
 }
 
-my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl');
+my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl-install');
 open my $pipe, '-|', $^X, $script, 'install', '--mirror', $mirror,
     '--cache', $cache, '--prefix', $prefix, 'Example::Built' or die $!;
 my $output = do { local $/; <$pipe> };

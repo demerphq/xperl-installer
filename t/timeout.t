@@ -46,7 +46,7 @@ my $index = "File: 02packages.details.txt\n\n"
 gzip \$index => File::Spec->catfile($mirror, 'modules', '02packages.details.txt.gz')
     or die $GzipError;
 
-my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl');
+my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl-install');
 my $work = File::Spec->catdir($root, 'work');
 my $started = time;
 open my $saved, '>&', \*STDOUT or die $!;

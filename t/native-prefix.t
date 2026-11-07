@@ -48,7 +48,7 @@ $tar->write(File::Spec->catfile($releases, 'Example-Native-1.00.tar.gz'), 1);
 
 my $include = File::Spec->catdir($native, 'include');
 
-my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl');
+my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl-install');
 my $run = 0;
 sub install (%args) {
     $run++;

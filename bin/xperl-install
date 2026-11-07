@@ -22,9 +22,9 @@ use XPerl::Installer::Registry;
 
 sub usage () {
     return <<'USAGE';
-Usage: xperl resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Name
-       xperl fetch   [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Name
-       xperl install [--config FILE] [--prefix DIR] [--registry DIR]
+Usage: xperl-install resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Name
+       xperl-install fetch   [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Name
+       xperl-install install [--config FILE] [--prefix DIR] [--registry DIR]
                      [--from FILE] [--resume] [--action-shell]
                      [--agent NAME | --repair-command PATH]
                      [--repair-attempts N] [--repair-timeout SECONDS]
@@ -34,7 +34,7 @@ Usage: xperl resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Na
                      [--native-prefix DIR]... [--no-native-prefix]
                      [--layout auto|site|install_base]
                      [--mirror URL|DIR] [--cache DIR] [--workdir DIR] Module::Name...
-       xperl install-ported --registry DIR [--config FILE] [--prefix DIR]
+       xperl-install install-ported --registry DIR [--config FILE] [--prefix DIR]
                      [--dry-run] [--json] [--resume] [--action-shell]
                      [--jobs K]
                      [--phase-timeout SECONDS]
@@ -45,7 +45,7 @@ Usage: xperl resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Na
                      [--repair-jobs K]
                      [--repair-interval SECONDS]
                      [--mirror URL|DIR] [--cache DIR] [--workdir DIR]
-       xperl scan-impact --pattern REGEX [--pattern REGEX]...
+       xperl-install scan-impact --pattern REGEX [--pattern REGEX]...
                      [--files GLOBS] [--ignore GLOBS] [--json]
 
 This command must run with an installed XPerl. Installation supports
@@ -327,7 +327,7 @@ dispatch ($action) {
                                  grep { $_->{user_action} } @{$result->{nodes}}],
                 ($status eq 'failed'
                     ? (resume => { workdir => $install_builder->{workdir},
-                                   command => 'xperl install --resume --workdir '
+                                   command => 'xperl-install install --resume --workdir '
                                        . $install_builder->{workdir} }) : ()),
                 receipts => [map { $_->{receipt} }
                              grep { $_->{status} eq 'installed' && $_->{receipt} }

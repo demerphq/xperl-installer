@@ -197,7 +197,7 @@ SKIP: {
 }
 
 {
-    my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl');
+    my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl-install');
     open my $pipe, '-|', "$^X $script install --layout flat --prefix "
         . File::Spec->catdir($root, 'cli-prefix') . " Example::Base 2>&1"
         or die $!;

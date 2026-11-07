@@ -53,7 +53,7 @@ the evidence records what has actually been tested.
 ## User workflow
 
 ```text
-xperl install Module::Name
+xperl-install install Module::Name
     -> resolve the CPAN distribution and recursive prerequisites
     -> download and verify its original release
     -> discover applicable XPerl patches, if a registry is configured
@@ -134,7 +134,7 @@ For example, from this installer checkout in the workspace:
 ```sh
 prefix="$HOME/perl5/perlbrew/perls/xperl"
 export PERL5LIB="$prefix/lib/perl5${PERL5LIB:+:$PERL5LIB}"
-"$prefix/bin/perl" bin/xperl install \
+"$prefix/bin/perl" bin/xperl-install install \
     --prefix "$prefix" --registry ../xperl-cpan-ports Module::Name
 ```
 
@@ -395,8 +395,8 @@ workspace's `tmp/xperl-installer-cache/` directory.
 From a clean prefix and cache, run the equivalent of:
 
 ```text
-xperl install --prefix <isolated-prefix> Sereal::Decoder
-xperl install --prefix <isolated-prefix> Sereal::Encoder
+xperl-install install --prefix <isolated-prefix> Sereal::Decoder
+xperl-install install --prefix <isolated-prefix> Sereal::Encoder
 xperl -I<isolated-prefix>/lib/... -MSereal::Encoder -MSereal::Decoder \
     -e '<encode and decode a representative structure>'
 ```
