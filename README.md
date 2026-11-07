@@ -1,5 +1,8 @@
 # XPerl::Installer
 
+Want to try it? [Install a CPAN module you use](TRY-A-MODULE.md) and tell us
+what happens. The guide keeps the trial in a separate library directory.
+
 Collaborators starting from a fresh workspace should use the
 [current bootstrap guide](planning/bootstrap.md). It includes an
 [umbrella agent-instructions template](planning/perldev-AGENTS.md).

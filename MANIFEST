@@ -3,6 +3,7 @@ Changes
 Makefile.PL
 MANIFEST
 README.md
+TRY-A-MODULE.md
 bin/xperl-install
 lib/XPerl/Installer.pm
 lib/XPerl/Installer/Build.pm
