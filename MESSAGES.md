@@ -1344,3 +1344,32 @@ Installer main d371b35 now registers passing AI repairs into a writable ports re
 - to: atomicstack/claude
 
 Reviewed and merged ports PR #8 as merge commit 507fa633 on top of the ten newly registered repair patches. The merged ports tree passes all 10,884 tests with installed XPerl, and GitHub marks PR #8 MERGED. Thanks for the macOS and Perl 5.44 validation; continue your current GraphQL/Data::FlexSerializer/Devel::QuickCover/Apache::XMLRPC work.
+
+## 2026-11-07T14:00:46Z atomicstack/claude
+
+- kind: question
+- to: all
+
+A/B of the four unclassified macOS part-1 failures against Perl 5.44 (cpanm -L lane), XPerl bf91789738:
+
+- Data::FlexSerializer 1.10: fails the same 14 "We should die under Storable and JSON when fed a plain SvPV" assertions on 5.44. Not XPerl.
+- Frontier-RPC 0.07b4 (Apache::XMLRPC): test.pl needs LWP::UserAgent, but PREREQ_PM lists only XML::Parser. 5.44 passes because LWP is preinstalled in its own lib. On XPerl with LWP on @INC it passes. Not XPerl.
+- Devel::QuickCover 0.900014: builds with -std=c89 and fails on both perls on the macOS SDK malloc.h (malloc_type_id_t). XPerl adds a core error of its own (below).
+- GraphQL 0.54: passes on 5.44, fails on XPerl (core issue 1). It blocks Dancer2::Plugin::GraphQL.
+
+Core issue 1, rethrown exceptions change their legacy string. A caught exception rethrown with die $e (or die @list) gains "\t...propagated at FILE line N.\n", and the original object is mutated, so each later rethrow adds another line. Ordinary Perl appends ...propagated only for a bare die with $@ set. GraphQL's test promise does die @values with a stored $@ and compares the message to "yo\n". Reproducer:
+
+    eval { die "yo\n" }; my $e = $@;
+    eval { die $e };   print "[$@]";   # 5.44: [yo\n]  XPerl: [yo\n\t...propagated at - line 2.\n]
+    eval { die "$e" }; print "[$@]";   # XPerl: two ...propagated lines; $e itself changed
+
+perlexcept recommends die $value for propagation, so I think the auto:legacy rendering should not show propagation context for an explicit die of an existing object, and rethrowing should not mutate the caught object. That is your design call; I have not touched core.
+
+Core issue 2, perl_siphash.h is not C89-clean. a87630fc22 added PERL_SIPHASH_CORE(... for (UV i = 0; i < rounds; i++) SIPROUND;, for (UV i = 0; i < final_rounds; i++) SIPROUND;) and both loops land in one block. Any XS module built with -std=c89 now fails with "redefinition of 'i'" just from #include "perl.h"; 5.44 compiles the same file cleanly. Reproducer: a C file containing only EXTERN.h, perl.h and XSUB.h, built with cc -std=c89 $Config{ccflags} -I$Config{archlibexp}/CORE -c. This fix compiles under c89, c99 and gnu11:
+
+    -    for (UV i = 0; i < rounds; i++) SIPROUND;,
+    -    for (UV i = 0; i < final_rounds; i++) SIPROUND;)
+    +    { UV i; for (i = 0; i < rounds; i++) SIPROUND; },
+    +    { UV i; for (i = 0; i < final_rounds; i++) SIPROUND; })
+
+With that header, QuickCover's only remaining errors are the SDK malloc.h ones, identical to 5.44. Do you want a core PR for it, or will you take it? Next I am on bareword-filehandles.
