@@ -20,6 +20,7 @@ use Symbol qw(gensym);
 use Time::HiRes qw(time);
 use XPerl::Installer::Platform;
 use XPerl::Installer::Proposal;
+use XPerl::Installer::Fetch;
 
 sub new ($class, %args) {
     die "installation prefix is required\n"
@@ -527,20 +528,7 @@ sub _unpack ($archive, $work) {
     $tar->read($archive, 1) or die "cannot read $archive\n";
     my @files = $tar->get_files;
     die "empty archive: $archive\n" unless @files;
-    my %roots;
-    for my $file (@files) {
-        my $name = $file->full_path;
-        $name =~ s{\A\./}{};
-        my ($root) = $name =~ m{\A([^/]+)};
-        die "unsafe archive member: $name\n"
-            unless defined $root && $name !~ m{(?:\A|/)\.\.? (?:/|\z)}x
-                && $name !~ /[\\:\0]/ && !$file->is_symlink
-                && !$file->is_hardlink
-                && ($name =~ m{/} || $file->is_dir);
-        $roots{$root} = 1;
-    }
-    die "archive has multiple source roots\n" unless keys(%roots) == 1;
-    my ($root) = keys %roots;
+    my $root = XPerl::Installer::Fetch::_tar_root(@files);
     my $before = getcwd();
     chdir $work or die "cannot enter $work: $!\n";
     my $ok = $tar->extract;

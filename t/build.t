@@ -3,6 +3,7 @@ use warnings;
 use FindBin;
 use lib "$FindBin::Bin/../lib";
 use Archive::Tar;
+use Archive::Tar::Constant qw(HARDLINK);
 use Config;
 use File::Path qw(make_path);
 use File::Spec;
@@ -137,6 +138,32 @@ make_path($dot_work);
 is(XPerl::Installer::Build::_unpack($dot_path, $dot_work),
    File::Spec->catdir($dot_work, 'Example-Dot-1.00'),
    'extracts a leading dot directory under the source root');
+
+# An in-tree hard link can reuse an earlier regular member. A link outside
+# the source root must fail before Archive::Tar touches the filesystem.
+my $link_path = File::Spec->catfile($releases, 'Example-Link-1.00.tar.gz');
+my $link_tar = Archive::Tar->new;
+$link_tar->add_data('Example-Link-1.00/pod.t', "original\n");
+$link_tar->add_data('Example-Link-1.00/t/pod.t', '',
+    { type => HARDLINK, linkname => 'Example-Link-1.00/pod.t' });
+$link_tar->write($link_path, 1);
+is(XPerl::Installer::Fetch::_check_archive($link_path), 2,
+   'accepts a hard link to an earlier in-tree file');
+my $link_work = File::Spec->catdir($root, 'link-work');
+make_path($link_work);
+my $link_source = XPerl::Installer::Build::_unpack($link_path, $link_work);
+open my $linked_file, '<', File::Spec->catfile($link_source, 't', 'pod.t')
+    or die $!;
+is(do { local $/; <$linked_file> }, "original\n",
+   'extracts the hard link with the original content');
+
+my $escape_path = File::Spec->catfile($releases, 'Example-Escape-1.00.tar.gz');
+my $escape_tar = Archive::Tar->new;
+$escape_tar->add_data('Example-Escape-1.00/t/pod.t', '',
+    { type => HARDLINK, linkname => '../outside' });
+$escape_tar->write($escape_path, 1);
+eval { XPerl::Installer::Fetch::_check_archive($escape_path) };
+like($@, qr/unsafe hard link/, 'rejects a hard link outside the source root');
 
 # ZIP releases follow the same configure, build, test, and install path.
 my $zip_path = File::Spec->catfile($releases, 'Example-Zipped-1.00.zip');

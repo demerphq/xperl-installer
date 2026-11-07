@@ -129,16 +129,44 @@ sub _check_archive ($archive) {
     $tar->read($archive, 1) or die "cannot read archive $archive\n";
     my @files = $tar->get_files;
     die "empty archive: $archive\n" unless @files;
+    _tar_root(@files);
+    return scalar @files;
+}
+
+# A hard link can only name a regular file already present under the same
+# source root. Archive::Tar creates it relative to the extraction directory,
+# so this keeps the link inside that directory without admitting symlinks.
+sub _tar_root (@files) {
+    my (%roots, %regular);
     for my $file (@files) {
         my $name = $file->full_path;
         $name =~ s{\A\./}{};
         die "unsafe archive member: $name\n"
             if !length($name) || $name =~ m{\A/|(?:\A|/)\.\.?(?:/|\z)}x
                 || $name =~ /[\\:\0]/;
-        die "archive contains a link: $name\n"
-            if $file->is_symlink || $file->is_hardlink;
+        my ($root) = $name =~ m{\A([^/]+)};
+        die "unsafe archive member: $name\n"
+            unless defined $root && ($name =~ m{/} || $file->is_dir);
+        $roots{$root} = 1;
+
+        die "archive contains a symbolic link: $name\n"
+            if $file->is_symlink;
+        if ($file->is_hardlink) {
+            my $target = $file->linkname;
+            $target =~ s{\A\./}{};
+            die "archive contains an unsafe hard link: $name\n"
+                unless $target =~ m{\A\Q$root\E/}
+                    && $target !~ m{(?:\A|/)\.\.?(?:/|\z)}
+                    && $target !~ /[\\:\0]/
+                    && $regular{$target};
+        }
+        elsif (!$file->is_file && !$file->is_dir) {
+            die "unsupported archive member type: $name\n";
+        }
+        $regular{$name} = 1 if $file->is_file || $file->is_hardlink;
     }
-    return scalar @files;
+    die "archive has multiple source roots\n" unless keys(%roots) == 1;
+    return (keys %roots)[0];
 }
 
 sub _check_zip ($archive) {
