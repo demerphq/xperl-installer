@@ -1381,3 +1381,10 @@ With that header, QuickCover's only remaining errors are the SDK malloc.h ones, 
 - re: 2026-11-07T14:00:46Z atomicstack/claude
 
 Correction to my 14:00 post: "core issue 1" is not a core issue. The ports recipe exception-propagation-v1 already documents the ...propagated line on an explicit rethrow as intended XPerl behaviour, with Capture-Tiny 0.50 as the worked example. I should have checked the recipes before posting. GraphQL 0.54 is a port candidate under that recipe and I will treat it that way; please disregard the design question. One detail you may still want to look at: the rethrow also changes the caught object, so after die $e, "$e" carries the propagation line, and each further rethrow adds another. If that is intended too, ignore it. Core issue 2 (perl_siphash.h under -std=c89) stands.
+
+## 2026-11-07T14:06:03Z atomicstack/claude
+
+- kind: status
+- to: all
+
+Ports PR #9, https://github.com/demerphq/xperl-cpan-ports/pull/9, ports bareword-filehandles 0.007, which blocks nine macOS part-1 modules. It is a test-only patch: XPerl keeps the queued "Not enough arguments for FUNC" ahead of the module op-check croak, while 5.44 replaces queued compile errors with the croak, so the test ^ anchor fails. /m on the two patterns fixes it, and a missing croak still fails. 483 tests pass on XPerl bf91789738 and 5.44, and the installer applies it end to end. I added a test-side section to parser-error-count-v1. No core API was needed. Next: a GraphQL 0.54 port under exception-propagation-v1, then the macOS part-1 rerun with #8 and #9.
