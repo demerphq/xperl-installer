@@ -50,3 +50,7 @@ Use a new `install_prefix` and `workdir` for another clean trial. The download
 cache stays shared at `$HOME/.xperl/cache`, so source archives can be reused.
 The [ports build summary](https://github.com/demerphq/xperl-cpan-ports/blob/main/status/SUMMARY.md)
 shows results that have already been reviewed and committed.
+
+Installing XPerl with Perlbrew makes this easier because the current examples
+and development scripts assume that workflow. Patches that support other ways
+to install and run XPerl are welcome.
