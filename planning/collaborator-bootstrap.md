@@ -41,6 +41,7 @@ git clone https://github.com/demerphq/perl_core_skillz.git perl_core_skillz
 git clone https://github.com/demerphq/git-compose-commit.git git-compose-commit
 cp xperl-installer/planning/perldev-AGENTS.md AGENTS.md
 mkdir -p tmp .ccache
+export CCACHE_DIR="$PWD/.ccache"
 ```
 
 The [git-compose-commit repository](https://github.com/demerphq/git-compose-commit)

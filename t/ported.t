@@ -35,14 +35,23 @@ sub release ($author, $dist, $version, %opt) {
     my $name = "$dist-$version";
     my $tar = Archive::Tar->new;
     my $requires = $opt{requires} // {};
+    my $executable = $opt{source_only}
+        ? ", EXE_FILES => ['bin/header-only-tool']" : '';
     $tar->add_data("$name/Makefile.PL",
-        "use ExtUtils::MakeMaker;\nWriteMakefile(NAME => '$module', VERSION => '$version');\n");
+        "use ExtUtils::MakeMaker;\nWriteMakefile(NAME => '$module', VERSION => '$version'$executable);\n");
     (my $file = $module) =~ s{::}{/}g;
     my $value = $opt{value} // 42;
-    $tar->add_data("$name/lib/$file.pm",
-        "package $module;\nour \$VERSION = '$version';\nsub value { $value }\n1;\n");
-    $tar->add_data("$name/t/basic.t",
-        "use Test::More tests => 1; use $module; is($module\::value(), 42);\n");
+    if ($opt{source_only}) {
+        $tar->add_data("$name/bin/header-only-tool", "#!perl\nprint qq{ready\\n};\n");
+        $tar->add_data("$name/t/basic.t",
+            "use Test::More tests => 1; ok(-f 'bin/header-only-tool');\n");
+    }
+    else {
+        $tar->add_data("$name/lib/$file.pm",
+            "package $module;\nour \$VERSION = '$version';\nsub value { $value }\n1;\n");
+        $tar->add_data("$name/t/basic.t",
+            "use Test::More tests => 1; use $module; is($module\::value(), 42);\n");
+    }
     $tar->add_data("$name/META.json", JSON::PP->new->encode({
         'meta-spec' => { version => 2 }, name => $dist, version => $version,
         abstract => 'fixture', author => ['XPerl'], license => ['perl_5'],
@@ -367,5 +376,20 @@ my $parallel_resumed = by_key(eval { JSON::PP->new->decode($output) } // {});
 ok($parallel_resumed->{'EXAMPLE/App'}{resumed}, 'parallel resume keeps an earlier success');
 is(releases_built($parallel_work) - $parallel_before, 2,
    'parallel resume rebuilt only the failed releases');
+
+# Exact-release validation includes distributions that install tools rather
+# than Perl modules. Ordinary dependency resolution still checks providers.
+record('EXAMPLE', 'HeaderOnly', '1.00', source_only => 1);
+my $header_record = $status{'EXAMPLE/HeaderOnly'};
+write_json(File::Spec->catfile(placement('EXAMPLE', 'HeaderOnly'), 'status.json'),
+           { schema => 2, %$header_record });
+my $header_prefix = File::Spec->catdir($root, 'header-prefix');
+my $header_work = File::Spec->catdir($root, 'header-work');
+($status, $output) = xperl('install-ported', common($header_prefix, $header_work),
+                           '--json', '--only', 'EXAMPLE/HeaderOnly');
+is($status, 0, 'tool-only distribution validates without a .pm file');
+my $header_result = by_key(eval { JSON::PP->new->decode($output) } // {});
+is($header_result->{'EXAMPLE/HeaderOnly'}{status}, 'installed',
+   'exact-release validation checks the build and install result');
 
 done_testing();

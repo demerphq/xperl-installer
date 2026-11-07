@@ -17,7 +17,12 @@ git clone https://github.com/demerphq/perl_core_skillz.git perl_core_skillz
 git clone https://github.com/demerphq/git-compose-commit.git git-compose-commit
 cp xperl-installer/planning/perldev-AGENTS.md AGENTS.md
 mkdir -p tmp .ccache
+export CCACHE_DIR="$PWD/.ccache"
 ```
+
+Keep `CCACHE_DIR` in the shell used for XPerl and CPAN builds when ccache is
+installed. If your shell startup or build service starts a fresh environment,
+set it there too. The installer does not require ccache.
 
 Read `AGENTS.md`, then the target repository's instructions. Install
 `git-compose-commit` from its repository before making commits. The old

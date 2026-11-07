@@ -6,10 +6,15 @@ use feature 'signatures';
 use Cwd qw(abs_path);
 use Digest::SHA;
 use Encode qw(encode);
+use Fcntl qw(:flock);
 use File::Basename ();
+use File::Copy qw(copy);
 use File::Find ();
+use File::Path qw(make_path);
 use File::Spec;
+use File::Temp qw(tempfile);
 use JSON::PP;
+use POSIX qw(strftime);
 use version;
 use builtin qw(jumphash_string siphash_2_4);
 no warnings 'experimental::builtin';
@@ -162,6 +167,168 @@ sub directory_for ($self, $author, $distribution) {
     my $prefix = unpack 'H2', siphash_2_4($key, "\0" x 16);
     return File::Spec->catdir($self->{repositories}[$repository], 'data',
                               $prefix, $author, $distribution);
+}
+
+# A successful repair becomes a patch against the original CPAN archive.
+# Lock the registry while changing its index so concurrent build workers do
+# not overwrite one another's release entries.
+sub register_repair ($self, $release, $record) {
+    my $proposal = $record->{proposal} // die "repair has no patch proposal\n";
+    die "repair was not installed\n"
+        unless ($record->{status} // '') eq 'installed';
+    die "repair patch is empty\n" unless @{$proposal->{files} // []};
+    for my $name (qw(test proposal-check install)) {
+        die "repair lacks a passing $name phase\n"
+            unless grep { $_->{name} eq $name && !$_->{exit_status} }
+                        @{$record->{phases} // []};
+    }
+
+    my $distribution = $release->{distribution};
+    my $version = $release->{distribution_version};
+    die "invalid distribution version\n"
+        unless defined($version) && $version =~ /\A[A-Za-z0-9_.-]+\z/;
+    my $author = author_from_path($release->{cpan_path});
+    my $source_sha = $release->{sha256};
+    die "invalid source digest\n"
+        unless $source_sha =~ /\A[0-9a-f]{64}\z/;
+    my $xperl = $record->{xperl_version};
+    my ($major, $minor, $micro) = $xperl =~ /\Av(\d+)\.(\d+)\.(\d+)\z/;
+    die "invalid XPerl version\n" unless defined $micro;
+
+    my $patch = _read_file($proposal->{path});
+    my $digest = Digest::SHA::sha256_hex($patch);
+    die "repair patch digest mismatch\n"
+        unless $digest eq ($proposal->{sha256} // '');
+    die "repair patch includes a local home path\n"
+        if $patch =~ m{/(?:home|Users)/[^/\s]+/};
+
+    my @recipes;
+    push @recipes, 'hash-entry-traversal-v1'
+        if $patch =~ /HvENTRY_(?:FIRST|NEXT|LIMIT)/;
+    push @recipes, 'hash-size-accounting-v1'
+        if $patch =~ /Hv(?:LINEAR_CAP|OA_INDEX|IS_LINEAR)/;
+    push @recipes, 'hash-shared-string-table-v1'
+        if $patch =~ /HvSTR(?:SLOTS|_TOMBSTONE|_REFCOUNT)/;
+    push @recipes, 'hash-metadata-manipulation-v1'
+        if $patch =~ /HvMAX_RAW/;
+    push @recipes, 'regex-internals-v1'
+        if $patch =~ /RX_(?:NPARENS|OFFS_START|OFFS_END)/;
+    my @linked = grep {
+        -f File::Spec->catfile($self->{path}, 'recipes', "$_.md")
+    } @recipes;
+
+    my $base = $self->_distribution_directory($release);
+    my $lock_path = File::Spec->catfile($self->{path}, '.registration.lock');
+    open my $lock, '>>', $lock_path
+        or die "cannot lock registry $lock_path: $!\n";
+    flock($lock, LOCK_EX) or die "cannot lock registry: $!\n";
+
+    my $index_path = File::Spec->catfile($base, 'index.json');
+    my $index = -f $index_path ? _read_json($index_path)
+        : { schema => 1, distribution => $distribution, releases => [] };
+    die "registry index identifies another distribution\n"
+        unless $index->{schema} == 1
+            && $index->{distribution} eq $distribution;
+    my @entries = grep { $_->{cpan_path} eq $release->{cpan_path} }
+                  @{$index->{releases}};
+    die "duplicate registry release\n" if @entries > 1;
+    my $entry = $entries[0];
+    if ($entry) {
+        die "registry release digest differs\n"
+            unless $entry->{source_sha256} eq $source_sha
+                && $entry->{version} eq $version;
+    }
+    else {
+        $entry = {
+            version => $version,
+            cpan_path => $release->{cpan_path},
+            source_sha256 => $source_sha,
+            patch_sets => [],
+        };
+        push @{$index->{releases}}, $entry;
+    }
+
+    my $running = version->parse($xperl);
+    my @active = grep {
+        $running >= version->parse($_->{xperl}{min_inclusive})
+            && $running < version->parse($_->{xperl}{max_exclusive})
+    } @{$entry->{patch_sets}};
+    die "ambiguous patch sets for repaired release\n" if @active > 1;
+    my $set = $active[0];
+    if (!$set) {
+        $set = {
+            id => "repair-$xperl",
+            purpose => 'compatibility',
+            xperl => {
+                min_inclusive => $xperl,
+                max_exclusive => "v$major." . ($minor + 1) . '.0',
+            },
+            recipes => \@linked,
+        };
+        push @{$entry->{patch_sets}}, $set;
+    }
+    my %seen;
+    $set->{recipes} = [grep { !$seen{$_}++ }
+                       @{$set->{recipes} // []}, @linked];
+
+    my $stem = "repair-$xperl-$version-" . substr($digest, 0, 12);
+    my $relative = "patches/$stem.patch";
+    my $patch_dir = File::Spec->catdir($base, 'patches');
+    my $evidence_dir = File::Spec->catdir($base, 'evidence');
+    make_path($patch_dir, $evidence_dir);
+    my $target = File::Spec->catfile($patch_dir, "$stem.patch");
+    if (-f $target) {
+        die "registered patch differs from proposal\n"
+            unless Digest::SHA::sha256_hex(_read_file($target)) eq $digest;
+    }
+    else {
+        copy($proposal->{path}, $target)
+            or die "cannot copy repair patch: $!\n";
+    }
+    $set->{patches} = [{ path => $relative, sha256 => $digest }];
+
+    # Evidence keeps only portable release and test facts. Build commands,
+    # logs and prefixes in a receipt contain machine-local paths.
+    my %platform = %{$record->{platform} // {}};
+    $platform{cc} = File::Basename::basename($platform{cc})
+        if defined $platform{cc};
+    $platform{make} = File::Basename::basename($platform{make})
+        if defined $platform{make};
+    my $evidence = {
+        date => strftime('%Y-%m-%d', gmtime),
+        source_sha256 => $source_sha,
+        patch_set_id => $set->{id},
+        patch_sha256 => $digest,
+        xperl_version => $xperl,
+        platform => \%platform,
+        files => $proposal->{files},
+        recipe_candidates => \@recipes,
+        tests => [map { { phase => $_, result => 'pass' } }
+                      qw(test proposal-check install)],
+    };
+    my $evidence_path = File::Spec->catfile($evidence_dir, "$stem.json");
+    _write_json($evidence_path, $evidence);
+    _write_json($index_path, $index);
+    close $lock;
+    return { patch_set => $set->{id}, patch_sha256 => $digest,
+             index => $index_path, evidence => $evidence_path };
+}
+
+sub _read_file ($path) {
+    open my $input, '<:raw', $path or die "cannot read $path: $!\n";
+    return do { local $/; <$input> };
+}
+
+sub _read_json ($path) {
+    return JSON::PP->new->decode(_read_file($path));
+}
+
+sub _write_json ($path, $data) {
+    my ($out, $temporary) = tempfile('.index-XXXXXXXX',
+        DIR => File::Basename::dirname($path), UNLINK => 0);
+    print {$out} JSON::PP->new->canonical->pretty->encode($data);
+    close $out or die "cannot close $temporary: $!\n";
+    rename $temporary, $path or die "cannot replace $path: $!\n";
 }
 
 # Every build status record in every configured repository. A record is

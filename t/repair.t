@@ -164,6 +164,11 @@ is_deeply([map { $_->{name} } @{$receipt->{phases}}],
           'installer reran all checks after repair');
 my $proposal = $receipt->{proposal};
 ok($proposal && -f $proposal->{path}, 'reviewable patch was written');
+is($receipt->{registration}{status}, 'registered',
+   'successful repair entered the configured registry');
+ok(-f $receipt->{registration}{index}
+   && -f $receipt->{registration}{evidence},
+   'registry keeps the release index and portable test evidence');
 open my $patch_file, '<:raw', $proposal->{path} or die $!;
 my $patch = do { local $/; <$patch_file> };
 is(sha256_hex($patch), $proposal->{sha256}, 'receipt records patch digest');
@@ -185,6 +190,16 @@ like($request->{response_path}, qr/\A\Q$request->{source}\E\//,
      'agent response stays inside its writable source directory');
 ok(-f File::Spec->catfile($prefix, qw(lib perl5 Example Fixable.pm)),
    'repaired module installed in prefix');
+
+open $pipe, '-|', $^X, $script, 'install', '--mirror', $mirror,
+    '--cache', $cache, '--registry', $registry,
+    '--prefix', File::Spec->catdir($root, 'replay-prefix'),
+    'Example::Fixable' or die $!;
+my $replay_output = do { local $/; <$pipe> };
+ok(close $pipe, 'registered patch installs from the original release');
+my $replay = JSON::PP->new->decode($replay_output);
+is($replay->{status}, 'installed',
+   'registry replay needs no repair agent');
 
 open $pipe, '-|', $^X, $script, 'install', '--mirror', $mirror,
     '--cache', $cache, '--prefix', $prefix, '--repair-command', $agent,

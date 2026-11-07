@@ -370,12 +370,22 @@ so it applies directly to the original release. A dry run against a fresh
 copy of that release must pass before installation. The receipt records the
 proposal path, file list, and SHA-256 digest for review.
 
+When `--registry` names a writable checkout, the installer registers a
+successful repair automatically. It writes the patch, an exact release and
+XPerl version selector, and portable test evidence. It links recipes whose
+source signatures appear in the patch. The receipt records the registration
+paths and digest. If registration fails, installation remains successful but
+the receipt records the error and the installer warns on stderr. The local
+proposal remains available for retry. Review the new registry files, then
+commit and publish them through the checkout's normal Git workflow. A later
+install selects the registered patch without an AI agent.
+
 The repair program can be any agent wrapper that accepts this protocol. A
 Codex wrapper, a Claude wrapper, or another tool receives the same request
 and must return the same exit status and source edits. The request contains
 no provider-specific fields. Credentials and provider settings belong to the
 wrapper, not the installer or its receipts. The installer does not bundle an
-AI service or submit generated patches yet.
+AI service or publish Git commits or pull requests itself.
 
 ## Validating recorded ports
 

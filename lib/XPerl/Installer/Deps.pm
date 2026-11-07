@@ -54,14 +54,13 @@ sub install ($self, $module) {
 }
 
 # Build one exact, already fetched release and its prerequisites, even when
-# the requested module is already available elsewhere on @INC.
+# the requested module is already available elsewhere on @INC. A recorded
+# distribution can install C headers or tools without providing a .pm file.
 sub install_release ($self, $release) {
     my $module = $release->{module};
     $self->{needed}->add_string_requirement($module, '0');
     $self->_enter($module);
     $self->_build($release, $module, force => 1);
-    die "installed distribution does not provide required $module\n"
-        unless $self->_satisfied($module);
     $self->_leave($module);
     return $self->{installed}{$release->{cpan_path}};
 }

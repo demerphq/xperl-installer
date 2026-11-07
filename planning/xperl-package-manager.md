@@ -323,8 +323,10 @@ working tree for inspection without installing a broken distribution.
 
 When a port passes, generate a patch against the untouched release. Save the
 source hash, XPerl version, build and test results, and agent provenance with
-the proposal. Submission to the shared registry is an explicit review step;
-the installer should prepare a contribution without publishing it by default.
+the proposal. The installer registers a successful repair in a configured
+writable registry. Review and publish the resulting Git change through the
+usual commit or pull request workflow. A clean registry-only install checks
+that the next user can replay the repair without an agent.
 Reviewers can improve the patch, verify ordinary Perl compatibility where
 practical, and add or revise a recipe when the failure is reusable.
 

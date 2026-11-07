@@ -157,6 +157,8 @@ sub install ($self, $release, %options) {
     my $record = {
         module        => $release->{module},
         version       => $release->{version},
+        distribution  => $release->{distribution},
+        distribution_version => $release->{distribution_version},
         cpan_path     => $release->{cpan_path},
         source_sha256 => $release->{sha256},
         prefix        => $self->{prefix},
@@ -424,6 +426,19 @@ sub install ($self, $release, %options) {
     my $deferred = ref($error) eq 'HASH' && $error->{defer};
     $record->{status} = $deferred ? 'deferred' : 'failed' if $error;
     $record->{deferred_prerequisites} = $error->{defer} if $deferred;
+    if (!$error && $self->{registry} && $record->{proposal}{sha256}) {
+        my $registered = eval {
+            $self->{registry}->register_repair($release, $record);
+        };
+        if ($@) {
+            chomp(my $reason = $@);
+            $record->{registration} = { status => 'failed', reason => $reason };
+            warn "repair installed but registry registration failed: $reason\n";
+        }
+        else {
+            $record->{registration} = { status => 'registered', %$registered };
+        }
+    }
     my $receipt = File::Spec->catfile($work,
         $deferred ? 'deferred.json' : 'receipt.json');
     open my $out, '>', $receipt or die "cannot write $receipt: $!\n";

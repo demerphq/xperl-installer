@@ -1,4 +1,11 @@
 Unreleased
+    Register successful AI repairs automatically in a writable ports
+    registry. Keep exact release selectors, patch digests, recipe links,
+    and portable evidence. Exact-release validation now accepts distributions
+    that install tools or C headers without a Perl module.
+    Allow repair agents to work on the defective layer and return a clear
+    human handoff when progress stops. Keep the ten-minute call timeout as
+    a hang guard and allow sixteen repair attempts per release by default.
     Rename the command to xperl-install; the XPerl interpreter keeps the
     xperl name. Update resume instructions and bootstrap examples.
     Add scan-impact to find candidate CPAN source affected by core changes.
@@ -7,7 +14,7 @@ Unreleased
     runtime version for both versioned and unversioned prerequisites.
     Repair agents can return an undeclared CPAN prerequisite for the scheduler
     to install before retrying the release. Their response file now lives in
-    the source directory, where a restricted agent can write it.
+    the source directory.
     Repair agents can report missing host dependencies and other user actions
     through a JSON response. Receipts and batch results preserve the action,
     and repair stops without repeated source-free calls. Every install saves
@@ -16,7 +23,7 @@ Unreleased
     Exclude generated objects and test scratch files from AI patch proposals,
     so an agent that rebuilds a distribution cannot make proposal generation
     fail on binary or unrecognized temporary files.
-    AI repairs allow four attempts per release by default and start at least
+    AI repairs allow sixteen attempts per release by default and start at least
     ten seconds apart across installer processes. --repair-limit is an
     optional run-wide cap, not a default that stops the batch after one
     release. --repair-interval controls the spacing.
