@@ -1,3 +1,6 @@
+This was the original `install-ported` assignment. That command is implemented.
+For a fresh setup and current commands, use [bootstrap.md](bootstrap.md).
+
 Help develop the XPerl package manager. Start by creating a light workspace:
 
 ```sh

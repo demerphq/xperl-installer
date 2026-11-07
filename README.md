@@ -1,8 +1,8 @@
 # XPerl::Installer
 
 Collaborators starting from a fresh workspace should use the
-[bootstrap and install-all handoff](planning/collaborator-bootstrap.md). It
-includes an [umbrella agent-instructions template](planning/perldev-AGENTS.md).
+[current bootstrap guide](planning/bootstrap.md). It includes an
+[umbrella agent-instructions template](planning/perldev-AGENTS.md).
 
 The installer resolves a module through CPAN's `02packages` index, fetches its
 original release archive, and can build, test, and install a `Makefile.PL` or
@@ -21,9 +21,9 @@ prefix="$HOME/perl5/perlbrew/perls/xperl"
 make
 make test
 make install
-xperl resolve Sereal::Decoder
-xperl fetch Sereal::Decoder
-xperl install --prefix "$prefix" Example::Tiny
+"$prefix/bin/perl" "$prefix/bin/xperl" resolve Sereal::Decoder
+"$prefix/bin/perl" "$prefix/bin/xperl" fetch Sereal::Decoder
+"$prefix/bin/perl" "$prefix/bin/xperl" install --prefix "$prefix" Example::Tiny
 ```
 
 The installed interpreter runs the installer and every CPAN build and test.
@@ -45,6 +45,26 @@ To install the current Sereal releases with local compatibility patches:
 "$prefix/bin/perl" "$prefix/bin/xperl" install --prefix "$prefix" --registry ../xperl-cpan-ports Sereal::Decoder
 "$prefix/bin/perl" "$prefix/bin/xperl" install --prefix "$prefix" --registry ../xperl-cpan-ports Sereal::Encoder
 ```
+
+## Finding modules affected by a core change
+
+`scan-impact` searches CPAN source through [grep.metacpan.org](https://grep.metacpan.org/).
+Give it a Perl compatible regular expression for the changed API or internal
+structure. For the XPerl hash storage change, start with:
+
+```sh
+"$prefix/bin/perl" "$prefix/bin/xperl" scan-impact --pattern 'HvARRAY|HeNEXT|HeSHARED_NEXT'
+"$prefix/bin/perl" "$prefix/bin/xperl" scan-impact --pattern 'HvARRAY|HeNEXT|HeSHARED_NEXT' --json > hash-candidates.json
+```
+
+The default file filter is `*.c, *.xs, *.h, *.inc`, and the default ignore
+filter is `ppport.h`. Use `--files` and `--ignore` to change those filters.
+The same fields appear in the website's search form. Results include source
+files and line numbers, and the JSON form can feed a review queue. A match
+means the code needs inspection; it does not mean the distribution fails on
+XPerl. The command does not change the ports registry or install packages.
+If the API truncates a search or the page limit is reached, JSON reports
+`incomplete: true` and the text view warns on stderr.
 
 ## Install layout
 

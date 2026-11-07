@@ -9,11 +9,13 @@ lib/XPerl/Installer/Build.pm
 lib/XPerl/Installer/Config.pm
 lib/XPerl/Installer/Deps.pm
 lib/XPerl/Installer/Fetch.pm
+lib/XPerl/Installer/Impact.pm
 lib/XPerl/Installer/Parallel.pm
 lib/XPerl/Installer/Platform.pm
 lib/XPerl/Installer/Ported.pm
 lib/XPerl/Installer/Proposal.pm
 lib/XPerl/Installer/Registry.pm
+planning/bootstrap.md
 planning/claude-code-prompt.md
 planning/collaborator-bootstrap.md
 planning/perldev-AGENTS.md
@@ -24,6 +26,7 @@ t/config.t
 t/deps.t
 t/environment.t
 t/fetch.t
+t/impact.t
 t/native-prefix.t
 t/parallel.t
 t/platform.t

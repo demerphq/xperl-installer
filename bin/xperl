@@ -14,6 +14,7 @@ use XPerl::Installer::Build;
 use XPerl::Installer::Config;
 use XPerl::Installer::Deps;
 use XPerl::Installer::Fetch;
+use XPerl::Installer::Impact;
 use XPerl::Installer::Parallel;
 use XPerl::Installer::Platform;
 use XPerl::Installer::Ported;
@@ -44,6 +45,8 @@ Usage: xperl resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Na
                      [--repair-jobs K]
                      [--repair-interval SECONDS]
                      [--mirror URL|DIR] [--cache DIR] [--workdir DIR]
+       xperl scan-impact --pattern REGEX [--pattern REGEX]...
+                     [--files GLOBS] [--ignore GLOBS] [--json]
 
 This command must run with an installed XPerl. Installation supports
 Makefile.PL and Build.PL releases and their declared required prerequisites.
@@ -54,6 +57,9 @@ Failed releases enter the repair queue while independent builds continue.
 --repair-interval SECONDS spaces repair starts across installer processes.
 install-ported rebuilds every release recorded as successful in the ports
 registry and writes report.json and summary.txt under WORKDIR/install-ported.
+scan-impact searches CPAN source on grep.metacpan.org for code that may need
+porting. It reports candidates; a match does not establish a build failure.
+GLOBS defaults to '*.c, *.xs, *.h, *.inc'; --ignore defaults to 'ppport.h'.
 --phase-timeout SECONDS stops a configure, build, test or install phase, and
 every process it started, after that many seconds (default 3600; 0 disables).
 --native-prefix DIR adds DIR/include, DIR/lib and DIR/lib/pkgconfig to the
@@ -73,7 +79,7 @@ my ($config_path, $agent, $mirror, $cache, $workdir, $refresh, $prefix,
     $repair_interval,
     $dry_run, $as_json, $resume, @only, @exclude, $jobs, $from, $phase_timeout,
     @native_prefixes, $no_native_prefix, $repair_jobs,
-    $layout, $action_shell);
+    $layout, $action_shell, @patterns, $scan_files, $scan_ignore);
 GetOptionsFromArray(
     \@ARGV,
     'config=s' => \$config_path,
@@ -102,6 +108,9 @@ GetOptionsFromArray(
     'no-native-prefix' => \$no_native_prefix,
     'layout=s' => \$layout,
     'from=s' => \$from,
+    'pattern=s' => \@patterns,
+    'files=s' => \$scan_files,
+    'ignore=s' => \$scan_ignore,
 ) or die usage();
 
 my $settings = defined($config_path)
@@ -367,6 +376,27 @@ dispatch ($action) {
             : XPerl::Installer::Ported::summary($report)
               . "report: $report->{report}\n";
         exit($report->{counts}{failed} || $report->{counts}{skipped} ? 1 : 0);
+    }
+    on ('scan-impact') {
+        die usage() if defined $module || !@patterns;
+        my $report = XPerl::Installer::Impact->new->scan(
+            patterns => \@patterns,
+            (defined $scan_files ? (files => $scan_files) : ()),
+            (defined $scan_ignore ? (ignore => $scan_ignore) : ()),
+        );
+        if ($as_json) {
+            print JSON::PP->new->canonical->pretty->encode($report);
+        } else {
+            for my $candidate (@{$report->{candidates}}) {
+                print "$candidate->{distribution}\n";
+                for my $match (@{$candidate->{matches}}) {
+                    print "  $match->{file}:" . join(',', @{$match->{lines}})
+                        . ' [' . join(', ', @{$match->{patterns}}) . "]\n";
+                }
+            }
+            print STDERR "grep.metacpan.org returned incomplete results\n"
+                if $report->{incomplete};
+        }
     }
     on (_) {
         die usage() if $action ne 'help' || defined $module;

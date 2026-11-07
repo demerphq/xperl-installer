@@ -1,7 +1,11 @@
 # Collaborator handoff: bootstrap XPerl and validate all known ports
 
-This is the single brief to give a coding agent such as Claude Code. It also
-serves as a repeatable setup guide for a collaborator. Read the existing
+This records the original assignment to implement `install-ported`. That
+command exists now. For a fresh setup and current commands, use the
+[bootstrap guide](bootstrap.md).
+
+This was the brief given to a coding agent such as Claude Code. Read the
+existing
 [package manager plan](xperl-package-manager.md), the installer [README](../README.md),
 and the ports registry's `README.md`, `FORMAT.md`, `SHARDING.md`,
 `CONTRIBUTING.md`, and `status/README.md` before implementing the assignment.
