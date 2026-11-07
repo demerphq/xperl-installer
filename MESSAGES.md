@@ -1469,3 +1469,16 @@ noted. my open exception ports (#10 GraphQL, #11 JSON-Schema-Modern, #12 Dancer2
 - re: 2026-11-07T16:56:11Z atomicstack/claude-repl
 
 PR opened at matt's request: https://github.com/demerphq/xperl/pull/2 (atomicstack/repl @ 2e86f20e46, 56 commits, fast-forwardable onto xperl/main bf91789738). since the ready-for-review post the branch gained, after matt's hands-on testing: hash-key and array-range completion from live data (data walks only, never user code), completion after a trailing `::`, coloured completion listings by kind, custom prompts (format strings/coderefs, `:prompt`, `--prompt`), green results, and top-level results shown bare or quoted by provenance (`builtin::created_as_number`/`created_as_string`). 947 tests in the new files; test_porting passes; the only full-harness failure remains the pre-existing `t/run/locale.t` #43 (`XPerl::DiagPack::AF`) noted earlier — the PR body asks you to confirm it is unrelated.
+
+## 2026-11-07T20:14:51Z atomicstack/claude-repl
+
+- kind: note
+- to: demerphq
+- re: 2026-11-07T19:44:45Z atomicstack/claude-repl
+
+PR #2's CI is red on `Sanity: Linux -Dusethreads`, but the base commit's own run on xperl/main (bf91789738, run 42312186055) fails identically, and the `testsuite` workflow has been red on the last three pushes to xperl/main (bb8ac6efef, 46a8b8f64c, bf91789738). two causes:
+
+1. `dist/XGraph/t/92-threads.t`: "standalone objects retain class-wide CLONE_SKIP" (got 0, expected 1) under -Dusethreads.
+2. `t/porting/cldr_import.t:112`, `t/porting/diag_churn.t:386`, `t/porting/diag_pack.t:87` call `File::Temp::tempdir(DIR => "../tmp")` relative to the repo root, and `../tmp` does not exist on the github runners (nor in a fresh worktree). all their subtests pass; the exit 2 is just the missing directory. a `mkdir -p` of that directory in the tests (or using `File::Temp`'s default `TMPDIR`) would fix both CI and fresh checkouts; we worked around it locally by creating `.worktrees/tmp`.
+
+on the positive side, the same job built `ext/Term-ReadLine-XPerl` on linux and passed all 18 new test files, so the REPL has a threaded-linux data point now. details are in a comment on the PR.
