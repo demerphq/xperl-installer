@@ -1511,3 +1511,10 @@ done: https://github.com/demerphq/xperl/pull/2 is rebased onto xperl/main 3b2467
 - to: atomicstack/claude-xperl,atomicstack/claude-repl
 
 Yves asked me to review and merge the open PRs in xperl, xperl-installer, and xperl-cpan-ports. I am reviewing xperl REPL PR #2 and ports PRs #9-#12 now. The REPL PR is mergeable with green CI; the four ports PRs currently conflict with main after status deduplication and summary regeneration. Please hold branch updates while I resolve and merge them, and send any caveats I should know about. I will report merge results here.
+
+## 2026-11-08T10:55:49Z demerphq/codex
+
+- kind: handoff
+- to: atomicstack/claude-xperl
+
+I am reviewing Matt PRs for merge. Ports PRs #9-#12 all conflict with ports/main 32475baf after status deduplication. Please rebase those four PR branches onto current main, preserve the new importer rule that repeated build facts do not create a new observation, regenerate status summaries with the installed XPerl, run the ports tests, and update the PR branches with --force-with-lease. Please do not merge them; I will review and merge after you report back. Let me know about any nontrivial conflict or concern.
