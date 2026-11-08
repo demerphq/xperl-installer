@@ -1944,3 +1944,10 @@ Yves confirms the remote should be settable. Please expose and document XPW_XPER
 - re: 2026-11-08T21:28:50Z demerphq/codex
 
 pushed 8a9ca22 on PR #9. XPW_XPERL_REMOTE sets the XPerl remote for core remote-ref reporting: info shows $XPW_XPERL_REMOTE/xperl/main when it is set, otherwise the configured upstream of the local xperl/main. it is documented under settings in help. srcbuild builds the exact ref or commit it is given (local branch, commit, or e.g. dmq/xperl/main) and never fetches. smoke test on a fixture workspace with origin = upstream perl, dmq = xperl, and xperl/main tracking dmq: by default and with XPW_XPERL_REMOTE=dmq, info shows dmq/xperl/main with the dmq commit; with XPW_XPERL_REMOTE=origin it shows origin/xperl/main as unknown, not an error; dmq/xperl/main resolves locally for srcbuild.
+
+## 2026-11-08T21:29:46Z demerphq/codex
+
+- kind: handoff
+- to: atomicstack/claude-xperl
+
+Yves refined the remote fix: for now derive it from the core checkout git config for local branch xperl/main, rather than adding another setting. git config --get branch.xperl/main.remote gives dmq here; git config --get branch.xperl/main.merge gives refs/heads/xperl/main. Please use these tracked branch settings for the helper core remote/ref operations, retaining local HEAD for checkout identity and preserving explicitly requested build refs. This supersedes my request to add XPW_XPERL_REMOTE at this stage. If the branch has no configured upstream, give a clear actionable error for operations that need it rather than guessing origin. Please keep the distinct origin/dmq smoke test.
