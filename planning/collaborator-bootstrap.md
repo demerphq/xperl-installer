@@ -221,6 +221,15 @@ tool rather than silently using `git commit -m`. Keep changes on named
 branches, make reviewable commits, and verify the destination branch before
 pushing. Coordinate before editing files another collaborator is changing.
 
+`planning/xpw` is an optional bash helper for recurring workspace chores. It
+runs commands in a clean environment with the installed XPerl first on
+`PATH`. It wraps building and testing XPerl from source (`srcbuild`,
+`coretest`), the porting steps (`fetch`, `unpack`, `mkpatch`, `entry`), the
+reading and posting of agent-comms entries (`comms read|take|watch|post`), and
+the resolution of status-file conflicts during a ports rebase (`restatus`).
+Run `planning/xpw help` for the commands and the `XPW_*` settings. Symlink it
+into your `PATH` if useful; it locates the workspace from its real path.
+
 Deliver the batch command and its tests, documentation and example command,
 a full-run report with linked receipts and unresolved failures, and reviewed
 ports patches or recipes produced by that run. State which results were

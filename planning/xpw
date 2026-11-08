@@ -1,0 +1,440 @@
+#!/usr/bin/env bash
+# xpw - xperl workspace helper. one entry point for the commands that keep
+# recurring in this workspace, with a clean environment baked in.
+set -euo pipefail
+
+# the umbrella workspace holding the xperl, xperl-installer and
+# xperl-cpan-ports checkouts. this script lives in
+# xperl-installer/planning/, so by default the workspace is two levels up
+# from its real location (symlinks are resolved).
+self=$(perl -MCwd=abs_path -e 'print abs_path(shift)' "${BASH_SOURCE[0]}" 2>/dev/null \
+    || printf '%s' "${BASH_SOURCE[0]}")
+WS=${XPW_WS:-$(cd "$(dirname "$self")/../.." && pwd)}
+XP=${XPW_PERL_PREFIX:-$HOME/perl5/perlbrew/perls/xperl}
+P544=${XPW_P544:-$HOME/perl-5.44.0}
+CACHE=${XPW_CACHE:-$WS/tmp/xperl-cache}
+REGISTRY=${XPW_REGISTRY:-$WS/xperl-cpan-ports}
+COMMS=$WS/xperl-installer/.worktrees/agent-comms
+
+die() { printf 'xpw: %s\n' "$*" >&2; exit 1; }
+say() { printf 'xpw: %s\n' "$*" >&2; }
+stamp() { date +%Y%m%d-%H%M%S; }
+
+# clean environment: no ~/bin (its `t` is moreutils ts and hangs tests), no
+# perl env overrides, xperl first on PATH.
+clean_env() {
+    local p="" d
+    local IFS=:
+    for d in $PATH; do [[ $d == "$HOME/bin" ]] || p+=${p:+:}$d; done
+    export PATH="$XP/bin:$p"
+    unset PERL5LIB PERL_MM_OPT PERL_MB_OPT PERL_LOCAL_LIB_ROOT
+    # opt-in: XPW_LIB=PREFIX adds PREFIX/lib/perl5 (e.g. a test-deps prefix)
+    if [[ -n ${XPW_LIB:-} ]]; then export PERL5LIB=$XPW_LIB/lib/perl5; fi
+}
+
+usage() {
+    cat <<'EOF'
+usage: xpw COMMAND [ARGS]
+
+environment
+  run CMD...                 run CMD with the clean env (xperl first on PATH)
+  perl ARGS...               xperl's perl with the clean env
+  info                       installed xperl commit, CLI location, repo heads
+  (set XPW_LIB=PREFIX to put PREFIX/lib/perl5 on PERL5LIB for run/perl/repeat)
+
+xperl + installer
+  rebuild REF                rebuild perlbrew xperl from xperl REF (old tree
+                             moved to tmp/), then `xpw cli`
+  srcbuild REF DIR PREFIX [CONFIGURE_ARGS...]
+                             build xperl from source in DIR for PREFIX
+  coretest DIR               full core test_harness of a srcbuild tree
+  cli                        install xperl-install from installer origin/main
+                             into site_perl, plus Module::Build
+  install [-p PREFIX] [-w WORKDIR] [--] ARGS...
+                             xperl-install install with workspace defaults
+                             (prefix: perlbrew xperl; workdir: tmp/install/<stamp>)
+
+porting
+  fetch CPAN_PATH            print local path of a release archive (downloads
+                             into the cache if missing), e.g. R/RE/REHSACK/Foo-1.0.tar.gz
+  unpack CPAN_PATH DIR       extract into DIR/orig and DIR/work, print sha256
+  mkpatch DIR [OUT]          diff DIR/orig vs DIR/work into an a/b patch
+                             (default DIR/<dist>.patch), dry-run it on a fresh
+                             extract, print sha256
+  entry PORTDIR ID RECIPE XRES ORES
+                             (in a ports worktree) new registry entry from a
+                             port dir: index.json, patch, evidence
+  registry DEST [BRANCH|WORKTREE]...
+                             ports snapshot: origin/main plus each source's
+                             changed files (branch, or worktree incl. uncommitted)
+  repeat N CMD...            run CMD N times with the clean env, tally results
+  restatus                   (ports rebase conflict) union status.json observations,
+                             take main status/ pages, import-receipts --rebuild
+
+perl 5.44 control
+  ab544 DIR CPAN_PATH...     installdeps + verbose test under perl 5.44 with
+                             -L DIR/lib; logs and results.tsv in DIR
+
+agent-comms
+  comms read READER          unread entries for READER, not marked
+  comms take READER          unread entries for READER, marked read as printed
+  comms mark READER          mark everything read for READER
+  comms watch READER [IGNORE_FROM...]
+                             wait for an unread entry (60s poll), print it
+                             unmarked; IGNORE_FROM hides e.g. your own posts
+  comms post FROM KIND RE SUBJECT BODY...   (RE may be '' for no --re)
+  (READER / FROM are your own agent ids, e.g. demerphq/codex; there are no
+  defaults, so several agents can share this script. after a watch wakes, use
+  take, not mark: mark would also swallow entries that arrived meanwhile)
+
+settings (environment)
+  XPW_WS              umbrella workspace (default: two levels above this
+                      script, i.e. the directory holding xperl-installer)
+  XPW_PERL_PREFIX     xperl install prefix (default: perlbrew perls/xperl)
+  XPW_P544            perl 5.44 control install (default: ~/perl-5.44.0)
+  XPW_CACHE           download cache (default: WS/tmp/xperl-cache)
+  XPW_REGISTRY        ports checkout (default: WS/xperl-cpan-ports)
+  XPW_OPENSSL_PREFIX  OpenSSL for rebuild (default: homebrew openssl@4 if present)
+  XPW_TEST_JOBS       coretest parallelism (default: 8)
+  comms expects the agent-comms worktree at WS/xperl-installer/.worktrees/agent-comms
+EOF
+}
+
+cmd_run()  { clean_env; exec "$@"; }
+cmd_perl() { clean_env; exec "$XP/bin/perl" "$@"; }
+
+cmd_info() {
+    clean_env
+    printf 'xperl commit:   %s\n' "$("$XP/bin/perl" -MConfig -e 'print $Config{git_commit_id}')"
+    printf 'xperl-install:  %s\n' "$(command -v xperl-install || echo missing)"
+    local r
+    for r in xperl:origin/xperl/main xperl-installer:origin/main xperl-cpan-ports:origin/main; do
+        printf '%-17s %s\n' "${r%%:*}" "$(git -C "$WS/${r%%:*}" log -1 --format='%h %s' "${r#*:}")"
+    done
+}
+
+cmd_cli() {
+    clean_env
+    local rev d
+    git -C "$WS/xperl-installer" fetch -q
+    rev=$(git -C "$WS/xperl-installer" rev-parse --short origin/main)
+    d=$WS/tmp/installer-build/main-$rev
+    rm -rf "$d"; mkdir -p "$d"
+    git -C "$WS/xperl-installer" archive origin/main | tar -x -C "$d"
+    say "building installer $rev in $d"
+    ( cd "$d" && perl Makefile.PL >/dev/null && make >/dev/null && make test && make install ) \
+        > "$d.log" 2>&1 || die "installer build failed; see $d.log"
+    say "installed $(command -v xperl-install)"
+    if ! perl -MModule::Build -e1 2>/dev/null; then
+        say "installing Module::Build into site_perl"
+        cmd_install_inner "$XP" "$WS/tmp/install/mb-$(stamp)" Module::Build
+    fi
+}
+
+# version (e.g. 5.45.5) of the xperl source at COMMIT, from patchlevel.h
+xperl_source_version() {
+    git -C "$WS/xperl" show "$1:patchlevel.h" | perl -ne '
+        $v{$1} = $2 if /^#define\s+PERL_(REVISION|VERSION|SUBVERSION)\s+(\d+)/;
+        END { print join ".", @v{qw(REVISION VERSION SUBVERSION)} }'
+}
+
+# quick perlbrew rebuild of the perl at XPW_PERL_PREFIX (named after its
+# directory) with --notest; use srcbuild + coretest when the suite matters
+cmd_rebuild() {
+    local ref=${1:?usage: xpw rebuild REF} commit tarball aside version name perlbrew
+    clean_env
+    perlbrew=$(command -v perlbrew || printf '%s' "$HOME/perl5/perlbrew/bin/perlbrew")
+    [[ -x $perlbrew ]] || die "perlbrew not found"
+    git -C "$WS/xperl" fetch -q origin
+    commit=$(git -C "$WS/xperl" rev-parse --short=10 "$ref")
+    version=$(xperl_source_version "$commit")
+    name=$(basename "$XP")
+    mkdir -p "$HOME/perl5/perlbrew/dists"
+    tarball=$HOME/perl5/perlbrew/dists/perl-$version.tar.gz
+    git -C "$WS/xperl" archive --format=tar.gz --prefix="perl-$version/" -o "$tarball" "$commit"
+    if [[ -d $XP ]]; then
+        aside=$WS/tmp/old-perlbrew-$name-$(stamp)
+        mv "$XP" "$aside"; say "moved old $name to $aside"
+    fi
+    say "building xperl $commit as $name (log: $WS/tmp/perlbrew-rebuild-$commit.log)"
+    # XPW_OPENSSL_PREFIX, else homebrew's openssl@4 when present
+    local openssl=${XPW_OPENSSL_PREFIX:-}
+    [[ -z $openssl && -d /opt/homebrew/opt/openssl@4 ]] && openssl=/opt/homebrew/opt/openssl@4
+    OPENSSL_PREFIX=$openssl "$perlbrew" install \
+        "$tarball" --as "$name" -j 16 --notest -D usedevel -U versiononly \
+        > "$WS/tmp/perlbrew-rebuild-$commit.log" 2>&1 || die "perlbrew build failed"
+    cmd_cli
+}
+
+# build xperl REF from source in DIR for PREFIX (not perlbrew's own build, so
+# the tested tree is what gets installed); extra args go to Configure
+cmd_srcbuild() {
+    local u='usage: xpw srcbuild REF DIR PREFIX [CONFIGURE_ARGS...]'
+    local ref=${1:?$u} dir=${2:?$u} prefix=${3:?$u} commit; shift 3
+    clean_env
+    git -C "$WS/xperl" fetch -q origin
+    commit=$(git -C "$WS/xperl" rev-parse --short=10 "$ref") || die "bad ref $ref"
+    [[ -e $dir ]] && die "$dir exists; pick a new directory"
+    [[ -e $prefix ]] && die "$prefix exists; pick a new prefix"
+    mkdir -p "$dir"; dir=$(cd "$dir" && pwd)
+    # a real checkout, so Configure records git_commit_id
+    git clone -q --shared --no-checkout "$WS/xperl" "$dir" && git -C "$dir" checkout -q --detach "$commit" || die "checkout failed"
+    say "configuring $commit in $dir for $prefix"
+    ( cd "$dir" && ./Configure -des -Dusedevel -Uversiononly -Dprefix="$prefix" "$@" ) \
+        > "$dir.configure.log" 2>&1 || die "Configure failed; see $dir.configure.log"
+    say "building (log: $dir.make.log)"
+    ( cd "$dir" && make -j16 ) > "$dir.make.log" 2>&1 || die "make failed; see $dir.make.log"
+    say "built $commit; next: xpw coretest $dir, then make install in $dir"
+}
+
+# full core test suite of a srcbuild tree; summary at the end of DIR.test.log
+cmd_coretest() {
+    local dir=${1:?usage: xpw coretest DIR}
+    clean_env
+    ( cd "$dir" && TEST_JOBS=${XPW_TEST_JOBS:-8} make -j16 test_harness ) > "$dir.test.log" 2>&1
+    local rc=$?
+    tail -n 25 "$dir.test.log"
+    return $rc
+}
+
+cmd_install_inner() {
+    local prefix=$1 workdir=$2; shift 2
+    mkdir -p "$workdir"
+    say "prefix $prefix, workdir $workdir"
+    xperl-install install --jobs 8 --registry "$REGISTRY" --cache "$CACHE" \
+        --prefix "$prefix" --workdir "$workdir" "$@"
+}
+
+cmd_install() {
+    local prefix=$XP workdir=""
+    while (( $# )); do
+        case $1 in
+            -p) prefix=$2; shift 2 ;;
+            -w) workdir=$2; shift 2 ;;
+            --) shift; break ;;
+            *) break ;;
+        esac
+    done
+    clean_env
+    cmd_install_inner "$prefix" "${workdir:-$WS/tmp/install/$(stamp)}" "$@"
+}
+
+cmd_fetch() {
+    local cp=${1:?usage: xpw fetch CPAN_PATH} f
+    f=$CACHE/authors/id/$cp
+    if [[ ! -f $f ]]; then
+        mkdir -p "${f%/*}"
+        /usr/bin/curl -fsSL -o "$f.part" "https://cpan.metacpan.org/authors/id/$cp" \
+            && mv "$f.part" "$f" || { rm -f "$f.part"; die "download failed: $cp"; }
+        say "downloaded $cp"
+    fi
+    printf '%s\n' "$f"
+}
+
+cmd_unpack() {
+    local cp=${1:?usage: xpw unpack CPAN_PATH DIR} dir=${2:?usage: xpw unpack CPAN_PATH DIR} f
+    f=$(cmd_fetch "$cp")
+    [[ -e $dir/orig || -e $dir/work ]] && die "$dir already has orig/ or work/"
+    mkdir -p "$dir/orig" "$dir/work"
+    tar -xzf "$f" -C "$dir/orig"; tar -xzf "$f" -C "$dir/work"
+    printf '%s\n' "$cp" > "$dir/.cpan_path"
+    printf 'unpacked %s\nsha256 %s\n' "$(ls "$dir/orig")" "$(shasum -a 256 "$f" | cut -d' ' -f1)"
+}
+
+cmd_mkpatch() {
+    local dir=${1:?usage: xpw mkpatch DIR [OUT]} out dist f n=0 chk
+    dir=$(cd "$dir" && pwd)
+    dist=$(ls "$dir/orig")
+    out=${2:-$dir/$dist.patch}
+    : > "$out"; out=$(cd "$(dirname "$out")" && pwd)/$(basename "$out")
+    while IFS= read -r f; do
+        diff -u --label "a/$f" --label "b/$f" "$dir/orig/$dist/$f" "$dir/work/$dist/$f" >> "$out" || true
+        n=$((n + 1))
+    done < <(diff -rq "$dir/orig/$dist" "$dir/work/$dist" \
+             | sed -nE "s#^Files $dir/orig/$dist/(.*) and .* differ\$#\\1#p" | sort)
+    (( n )) || die "no changed files"
+    # a file that only loses lines is usually build damage (e.g. a truncated
+    # README), not an intended change
+    awk '/^\+\+\+ /{f=$2; next} /^--- /{next} /^@@/{next} /^\+/{add[f]=1} /^-/{del[f]=1}
+         END{for (f in del) if (!add[f]) print f}' "$out" |
+        while IFS= read -r f; do say "warning: $f only loses lines; check it is not build damage"; done
+    local only; only=$(diff -rq "$dir/orig/$dist" "$dir/work/$dist" | grep -c '^Only in' || true)
+    (( only )) && say "note: $only paths exist in only one tree (build output?) and are not in the patch"
+    chk=$(mktemp -d "$dir/chk.XXXX")
+    tar -xzf "$(cmd_fetch "$(cat "$dir/.cpan_path")")" -C "$chk"
+    ( cd "$chk/$dist" && patch -p1 --dry-run -s < "$out" ) || die "patch does not apply cleanly"
+    rm -rf "$chk"
+    printf 'patch  %s\nfiles  %d, hunks %d\nsha256 %s\n' "$out" "$n" "$(grep -c '^@@' "$out")" \
+        "$(shasum -a 256 "$out" | cut -d' ' -f1)"
+}
+
+# registry snapshot for a batch: origin/main of the ports repo, overlaid with
+# every file that differs from origin/main in each SOURCE (a branch name, or a
+# worktree path including uncommitted/untracked files). status files are not
+# copied; the installer does not read them.
+cmd_registry() {
+    local u='usage: xpw registry DEST [BRANCH|WORKTREE]...'
+    local dest=${1:?$u} src f n; shift
+    local repo=$REGISTRY
+    [[ -e $dest ]] && die "$dest exists"
+    mkdir -p "$dest"; dest=$(cd "$dest" && pwd)
+    git -C "$repo" fetch -q
+    git -C "$repo" archive origin/main | tar -x -C "$dest"
+    for src in "$@"; do
+        n=0
+        if [[ -d $src ]]; then
+            while IFS= read -r f; do
+                [[ $f == status/* || $f == */status.json ]] && continue
+                mkdir -p "$dest/${f%/*}"; cp "$src/$f" "$dest/$f"; n=$((n + 1))
+            done < <(cd "$src" && { git diff --name-only --diff-filter=d origin/main; git ls-files --others --exclude-standard; } | sort -u)
+        else
+            while IFS= read -r f; do
+                [[ $f == status/* || $f == */status.json ]] && continue
+                mkdir -p "$dest/${f%/*}"; git -C "$repo" show "$src:$f" > "$dest/$f"; n=$((n + 1))
+            done < <(git -C "$repo" diff --name-only --diff-filter=d "origin/main...$src")
+        fi
+        say "overlaid $n files from $src"
+    done
+    printf '%s\n' "$dest"
+}
+
+# write index.json, patch and evidence for a new registry entry from a port
+# dir made by `xpw unpack` + `xpw mkpatch`. run inside a ports worktree.
+cmd_entry() {
+    local u='usage: xpw entry PORTDIR PATCH_SET_ID RECIPE XPERL_RESULT PERL544_RESULT'
+    local dir=${1:?$u} id=${2:?$u} recipe=${3?$u} xres=${4:?$u} ores=${5:?$u}
+    local cp dist rel author ver pre D ps ss rec commit
+    [[ -f data/../registry.json ]] || die "run inside an xperl-cpan-ports worktree"
+    dir=$(cd "$dir" && pwd); cp=$(cat "$dir/.cpan_path"); dist=$(ls "$dir/orig")
+    clean_env
+    rel=${cp##*/}; rel=${rel%.tar.gz}; rel=${rel%.tgz}
+    author=$(cut -d/ -f3 <<<"$cp"); ver=${rel##*-}; dist=${rel%-*}
+    pre=$(perl -e 'use builtin qw(siphash_2_4); no warnings; print unpack("H2", siphash_2_4($ARGV[0], "\0" x 16))' "$author/$dist")
+    D=data/$pre/$author/$dist
+    [[ -e $D/index.json ]] && die "$D/index.json exists; edit it instead"
+    mkdir -p "$D/patches" "$D/evidence"
+    cp "$dir/$rel.patch" "$D/patches/$id.patch"
+    ps=$(shasum -a 256 "$D/patches/$id.patch" | cut -d' ' -f1)
+    ss=$(shasum -a 256 "$(cmd_fetch "$cp")" | cut -d' ' -f1)
+    commit=$(perl -MConfig -e 'print substr($Config{git_commit_id}, 0, 10)')
+    # this xperl's version and the next minor as the exclusive bound; the
+    # perl control interpreter from XPW_P544
+    local xv xmax ov
+    xv=$(perl -e 'printf "v%vd", $^V')
+    xmax=$(perl -e 'printf "v%d.%d.0", $^V->{version}[0], $^V->{version}[1] + 1')
+    ov=$("$P544/bin/perl" -e 'printf "v%vd", $^V' 2>/dev/null || printf unknown)
+    rec='[]'; [[ -n $recipe ]] && rec="[\"$recipe\"]"
+    jq -n --arg dist "$dist" --arg ver "$ver" --arg p "$cp" --arg ss "$ss" --arg id "$id" --arg ps "$ps" --argjson rec "$rec" --arg xv "$xv" --arg xmax "$xmax" \
+        '{schema:1, distribution:$dist, releases:[{version:$ver, cpan_path:$p, source_sha256:$ss, patch_sets:[{id:$id, xperl:{min_inclusive:$xv, max_exclusive:$xmax}, patches:[{path:("patches/" + $id + ".patch"), sha256:$ps}], recipes:$rec}]}]}' \
+        > "$D/index.json"
+    jq -n --arg ss "$ss" --arg id "$id" --arg ps "$ps" --arg xr "$xres" --arg or "$ores" \
+        --arg date "$(date +%F)" --arg arch "$(perl -MConfig -e 'print $Config{archname}')" \
+        --arg xi "XPerl $xv ($commit)" --arg xv "$xv" --arg oi "Perl $ov" \
+        '{source_sha256:$ss, patch_set_id:$id, patch_sha256:$ps, date:$date, platform:$arch, xperl_version:$xv, tests:[{command:"make test (original archive + patch)", interpreter:$xi, result:$xr},{command:"make test (original archive + patch)", interpreter:$oi, result:$or}]}' \
+        > "$D/evidence/$id-$xv.json"
+    printf 'entry %s\npatch sha256 %s\n' "$D" "$ps"
+}
+
+cmd_repeat() {
+    local n=${1:?usage: xpw repeat N CMD...} i pass=0 fail=0 log
+    shift; clean_env
+    log=$(mktemp "${TMPDIR:-/tmp}/xpw-repeat.XXXX")
+    for (( i = 1; i <= n; i++ )); do
+        if "$@" > "$log.$i" 2>&1; then pass=$((pass + 1)); rm -f "$log.$i"
+        else fail=$((fail + 1)); say "run $i failed: $log.$i"; fi
+    done
+    printf 'runs %d, pass %d, fail %d\n' "$n" "$pass" "$fail"
+    (( fail == 0 ))
+}
+
+# during a ports rebase conflict: union each conflicted status.json's
+# observations (main's side first, then ours, by id), take main's generated
+# status/ pages, then let import-receipts --rebuild re-sort, deduplicate and
+# regenerate the summaries; stages the results
+cmd_restatus() {
+    local top f o2 o3
+    top=$(git rev-parse --show-toplevel) || die "not in a git worktree"
+    cd "$top"
+    [[ -f bin/import-receipts ]] || die "not a ports worktree: $top"
+    # it stages files, so only run it in the middle of a rebase or merge
+    local gd; gd=$(git rev-parse --git-dir)
+    [[ -d $gd/rebase-merge || -d $gd/rebase-apply || -f $gd/MERGE_HEAD ]] \
+        || die "no rebase or merge in progress here"
+    o2=$(mktemp) o3=$(mktemp)
+    while IFS= read -r f; do
+        git show ":2:$f" > "$o2" && git show ":3:$f" > "$o3" || die "no stages for $f"
+        jq --slurpfile b "$o3" '
+            .observations as $a
+            | ($a | map(.id)) as $ids
+            | .observations = $a + [$b[0].observations[] | select(.id as $i | $ids | index($i) | not)]
+        ' "$o2" > "$f"
+        say "merged $f: $(jq '.observations | length' "$o2") main + $(jq '.observations | length' "$o3") ours -> $(jq '.observations | length' "$f")"
+        git add "$f"
+    done < <(git diff --name-only --diff-filter=U -- '*/status.json')
+    rm -f "$o2" "$o3"
+    while IFS= read -r f; do
+        git checkout --ours -- "$f" && git add "$f"
+    done < <(git diff --name-only --diff-filter=U -- 'status/')
+    clean_env
+    perl bin/import-receipts --rebuild || die "import-receipts --rebuild failed"
+    git add -A data status
+    git diff --name-only --diff-filter=U | grep . && die "conflicts remain" || say "no conflicts remain"
+}
+
+cmd_ab544() {
+    local dir=${1:?usage: xpw ab544 DIR CPAN_PATH...} cp f rel log r
+    shift; mkdir -p "$dir"; dir=$(cd "$dir" && pwd)
+    clean_env
+    export PATH=$P544/bin:${PATH#"$XP/bin:"} PERL_CPANM_HOME=$dir/cpanm-home
+    for cp in "$@"; do
+        f=$(cmd_fetch "$cp"); rel=${cp##*/}; rel=${rel%.tar.gz}; rel=${rel%.tgz}
+        log=$dir/$rel.log
+        if timeout 1800 "$P544/bin/cpanm" -q -L "$dir/lib" --notest --installdeps "$f" > "$log" 2>&1; then
+            if timeout 1800 "$P544/bin/cpanm" -L "$dir/lib" --test-only --verbose "$f" >> "$log" 2>&1
+            then r=PASS; else r=FAIL; fi
+        else r=DEPS-FAILED; fi
+        printf '%s\t%s\n' "$r" "$rel" | tee -a "$dir/results.tsv"
+    done
+}
+
+cmd_comms() {
+    local sub=${1:?usage: xpw comms read|mark|post}; shift
+    cd "$COMMS"
+    git pull -q --ff-only
+    case $sub in
+        read) "$COMMS/bin/comms-unread" --reader "${1:?usage: xpw comms read READER}" --no-mark ;;
+        # print unread entries and mark exactly those read (use this after a
+        # watch wakes: mark alone would also swallow entries that arrived since)
+        take) "$COMMS/bin/comms-unread" --reader "${1:?usage: xpw comms take READER}" ;;
+        mark) "$COMMS/bin/comms-unread" --reader "${1:?usage: xpw comms mark READER}" > /dev/null ;;
+        # blocks until there is an unread entry for READER (own posts count:
+        # mark them read first), then prints it unmarked
+        watch)
+            local r=${1:?usage: xpw comms watch READER [IGNORE_FROM...]}; shift
+            local ig=() i; for i in "$@"; do ig+=(--ignore-from "$i"); done
+            # comms-unread exits 2 when the fetch fails (network blip): retry
+            local rc
+            while true; do
+                "$COMMS/bin/comms-unread" --reader "$r" "${ig[@]}" --no-mark --wait 0 --interval 60 && return 0
+                rc=$?
+                (( rc == 2 )) || return $rc
+                echo "xpw: comms fetch failed, retrying in 60s" >&2
+                sleep 60
+            done ;;
+        post)
+            local u='usage: xpw comms post FROM KIND RE SUBJECT BODY...'
+            local from=${1:?$u} kind=${2:?$u} re=${3?$u} subject=${4:?$u}; shift 4
+            local args=(--from "$from" --kind "$kind" --subject "$subject")
+            [[ -n $re ]] && args+=(--re "$re")
+            ( cd "$COMMS" && bin/comms-post "${args[@]}" -- "$@" ) ;;
+        *) die "unknown comms command: $sub" ;;
+    esac
+}
+
+(( $# )) || { usage; exit 1; }
+c=$1; shift
+case $c in
+    run|perl|info|cli|rebuild|srcbuild|coretest|install|fetch|unpack|mkpatch|entry|registry|repeat|restatus|ab544|comms) "cmd_$c" "$@" ;;
+    help|-h|--help) usage ;;
+    *) usage; exit 1 ;;
+esac
