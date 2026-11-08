@@ -81,9 +81,14 @@ sub _install ($self, $module, $constraint) {
     my $nested = @{$self->{stack}} > 1;
     my $release = $self->{prefer} ? $self->{prefer}->($module) : undef;
     if (!$release) {
+        # Check the index before fetching an archive that cannot satisfy
+        # the requirement, including a pin older than the installed copy.
+        my $index = $self->{fetcher}->resolve($module);
+        my $version = $index->{version};
+        die "CPAN index version $version does not satisfy $module $constraint\n"
+            if defined $version && $version ne 'undef'
+                && !$self->{needed}->accepts_module($module, $version);
         $release = $self->{fetcher}->fetch($module);
-        die "CPAN index version $release->{version} does not satisfy $module $constraint\n"
-            unless $self->{needed}->accepts_module($module, $release->{version});
     }
     if ($nested) {
         eval { $self->_build($release, $module); 1 } or do {

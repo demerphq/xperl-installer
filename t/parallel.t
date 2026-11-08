@@ -84,6 +84,10 @@ release('VerLow', requires => ['Ver']);
 release('VerAHigh', requires => ['Ver>=2']);    # resolved before VerLow
 release('VerZHigh', requires => ['Ver>=2']);    # resolved after VerLow
 release('VerTop', requires => [qw(VerAHigh VerLow VerZHigh)]);
+# This is the only reference to Pinned. An impossible version must not leave
+# its archive in the cache or schedule an orphan build.
+release('Pinned');
+release('PinnedOnlyHigh', requires => ['Pinned>=2']);
 # Two modules from one release, required through different paths.
 release('Twin', extra => ['Extra']);
 release('ViaTwin', requires => ['Twin']);
@@ -274,6 +278,31 @@ for my $strict (qw(VerAHigh VerZHigh)) {
 is(node($result, 'VerLow')->{status}, 'installed',
    'a dependent satisfied by the release still installs');
 is(node($result, 'VerTop')->{status}, 'blocked', 'their common dependent is blocked');
+
+my $pinned_prefix = File::Spec->catdir($root, 'pinned-prefix');
+my $pinned_lib = File::Spec->catdir($pinned_prefix, qw(lib perl5 Example));
+make_path($pinned_lib);
+open my $pinned_file, '>', File::Spec->catfile($pinned_lib, 'Pinned.pm') or die $!;
+print {$pinned_file} "package Example::Pinned; our \$VERSION = '1.00'; 1;\n";
+close $pinned_file or die $!;
+
+# The installed and indexed versions are both too old for this pin. Neither
+# worker path should fetch the same release or schedule an orphan build.
+for my $jobs (1, 2) {
+    ($status, $result, $prefix, $work) =
+        install('Example::PinnedOnlyHigh', '--jobs', $jobs,
+                '--prefix', $pinned_prefix);
+    isnt($status, 0, "impossible indexed version fails with $jobs job(s)");
+    like(node($result, 'PinnedOnlyHigh')->{reason}, qr/Example::Pinned\b.*2/,
+         'the failure names the unsatisfied requirement') if $jobs > 1;
+    ok(!-f File::Spec->catfile($cache, qw(authors id E EX EXAMPLE),
+                              'Example-Pinned-1.00.tar.gz'),
+       'the indexed release is not fetched');
+    ok(!grep({ $_->{cpan_path} =~ /Example-Pinned-1\.00/ } receipts($work)),
+       'the indexed release is not built');
+    ok(!grep({ $_->{cpan_path} =~ /Example-Pinned-1\.00/ } @{$result->{nodes} // []}),
+       'the indexed release is absent from the graph');
+}
 
 # A dependent of a package declared only in META provides is built once the
 # release declaring it is installed.

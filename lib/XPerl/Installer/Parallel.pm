@@ -103,6 +103,12 @@ sub _add_module ($self, $module, $range, $from) {
         my $index = eval { $self->{fetcher}->resolve($module) };
         if (!$release) {
             die "CPAN module not found: $module\n" unless $index;
+            # A rejected index version cannot fix this requirement. Do not
+            # download its archive or leave an orphan node in the graph.
+            my $version = $index->{version};
+            die "CPAN index version $version does not satisfy $module $range\n"
+                if defined $version && $version ne 'undef'
+                    && !_accepts($module, $range, $version);
             $release = $self->{fetcher}->fetch($module);
         }
         $release->{module} //= $module;
