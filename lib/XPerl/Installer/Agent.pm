@@ -21,6 +21,12 @@ sub profile ($class, $name, $settings = undef) {
         $profile{model} //= 'gpt-6.1-sol';
         $profile{effort} //= 'high';
     }
+    else {
+        # The CLI's own default may be its most capable (and costliest)
+        # model. Repairs default to the current Sonnet; set `model` to choose
+        # another.
+        $profile{model} //= 'sonnet';
+    }
     return \%profile;
 }
 
