@@ -20,6 +20,12 @@ die() { printf 'xpw: %s\n' "$*" >&2; exit 1; }
 say() { printf 'xpw: %s\n' "$*" >&2; }
 stamp() { date +%Y%m%d-%H%M%S; }
 
+# the configured upstream of BRANCH in REPO (e.g. dmq/xperl/main), else the
+# local BRANCH itself. no remote name is assumed.
+upstream_of() {
+    git -C "$1" rev-parse --abbrev-ref "$2@{upstream}" 2>/dev/null || printf '%s' "$2"
+}
+
 # clean environment: no ~/bin (its `t` is moreutils ts and hangs tests), no
 # perl env overrides, xperl first on PATH.
 clean_env() {
@@ -46,9 +52,11 @@ xperl + installer
   srcbuild REF DIR PREFIX [CONFIGURE_ARGS...]
                              build xperl REF from a git clone in DIR for
                              PREFIX (records git_commit_id; no install)
+                             REF resolves in the local xperl checkout; no
+                             fetch, so fetch the remote you want first
   coretest DIR               full core test_harness of a srcbuild tree; then
                              `make install` in DIR only if it passes
-  cli                        install xperl-install from installer origin/main
+  cli                        install xperl-install from the installer's main upstream
                              into site_perl, plus Module::Build
   install [-p PREFIX] [-w WORKDIR] [--] ARGS...
                              xperl-install install into XPW_PERL_PREFIX with
@@ -66,7 +74,7 @@ porting
                              matches DIR/work, print sha256. register patches
                              through the installer's registry/receipt path
   registry DEST [BRANCH|WORKTREE]...
-                             ports snapshot: origin/main plus each source's
+                             ports snapshot: main's upstream plus each source's
                              changed files (branch, or worktree incl. uncommitted)
   repeat N CMD...            run CMD N times with the clean env, tally results
   restatus                   (ports rebase conflict) union status.json observations,
@@ -108,19 +116,29 @@ cmd_info() {
     printf 'xperl commit:   %s\n' "$("$XP/bin/perl" -MConfig -e 'print $Config{git_commit_id}')"
     printf 'xperl-install:  %s\n' "$(command -v xperl-install || echo missing)"
     local r
-    for r in xperl:origin/xperl/main xperl-installer:origin/main xperl-cpan-ports:origin/main; do
-        printf '%-17s %s\n' "${r%%:*}" "$(git -C "$WS/${r%%:*}" log -1 --format='%h %s' "${r#*:}")"
+    # each checkout's own HEAD, and its main branch's configured upstream
+    local repo main up
+    for r in xperl:xperl/main xperl-installer:main xperl-cpan-ports:main; do
+        repo=$WS/${r%%:*} main=${r#*:}
+        [[ -d $repo ]] || { printf '%-17s missing\n' "${r%%:*}"; continue; }
+        up=$(upstream_of "$repo" "$main")
+        printf '%-17s HEAD %s (%s)\n' "${r%%:*}" \
+            "$(git -C "$repo" log -1 --format='%h %s' HEAD)" \
+            "$(git -C "$repo" branch --show-current || true)"
+        printf '%-17s %s %s\n' "" "$up" \
+            "$(git -C "$repo" log -1 --format='%h %s' "$up" 2>/dev/null || echo unknown)"
     done
 }
 
 cmd_cli() {
     clean_env
     local rev d
-    git -C "$WS/xperl-installer" fetch -q
-    rev=$(git -C "$WS/xperl-installer" rev-parse --short origin/main)
+    local up; up=$(upstream_of "$WS/xperl-installer" main)
+    [[ $up == */* ]] && git -C "$WS/xperl-installer" fetch -q "${up%%/*}"
+    rev=$(git -C "$WS/xperl-installer" rev-parse --short "$up")
     d=$WS/tmp/installer-build/main-$rev
     rm -rf "$d"; mkdir -p "$d"
-    git -C "$WS/xperl-installer" archive origin/main | tar -x -C "$d"
+    git -C "$WS/xperl-installer" archive "$up" | tar -x -C "$d"
     say "building installer $rev in $d"
     ( cd "$d" && perl Makefile.PL >/dev/null && make >/dev/null && make test && make install ) \
         > "$d.log" 2>&1 || die "installer build failed; see $d.log"
@@ -138,7 +156,6 @@ cmd_srcbuild() {
     local u='usage: xpw srcbuild REF DIR PREFIX [CONFIGURE_ARGS...]'
     local ref=${1:?$u} dir=${2:?$u} prefix=${3:?$u} commit; shift 3
     clean_env
-    git -C "$WS/xperl" fetch -q origin
     commit=$(git -C "$WS/xperl" rev-parse --short=10 "$ref") || die "bad ref $ref"
     [[ -e $dir ]] && die "$dir exists; pick a new directory"
     [[ -e $prefix ]] && die "$prefix exists; pick a new prefix"
@@ -262,8 +279,8 @@ cmd_mkpatch() {
     printf '%s\n' "$files" | sed 's/^/       /'
 }
 
-# registry snapshot for a batch: origin/main of the ports repo, overlaid with
-# every file that differs from origin/main in each SOURCE (a branch name, or a
+# registry snapshot for a batch: the upstream of the ports repo's main branch
+# (BASE), overlaid with every file that differs from BASE in each SOURCE (a branch name, or a
 # worktree path including uncommitted/untracked files). status files are not
 # copied; the installer does not read them.
 cmd_registry() {
@@ -272,20 +289,22 @@ cmd_registry() {
     local repo=$REGISTRY
     [[ -e $dest ]] && die "$dest exists"
     mkdir -p "$dest"; dest=$(cd "$dest" && pwd)
-    git -C "$repo" fetch -q
-    git -C "$repo" archive origin/main | tar -x -C "$dest"
+    local base; base=$(upstream_of "$repo" main)
+    [[ $base == */* ]] && git -C "$repo" fetch -q "${base%%/*}"
+    say "base $base"
+    git -C "$repo" archive "$base" | tar -x -C "$dest"
     for src in "$@"; do
         n=0
         if [[ -d $src ]]; then
             while IFS= read -r f; do
                 [[ $f == status/* || $f == */status.json ]] && continue
                 mkdir -p "$dest/${f%/*}"; cp "$src/$f" "$dest/$f"; n=$((n + 1))
-            done < <(cd "$src" && { git diff --name-only --diff-filter=d origin/main; git ls-files --others --exclude-standard; } | sort -u)
+            done < <(cd "$src" && { git diff --name-only --diff-filter=d "$base"; git ls-files --others --exclude-standard; } | sort -u)
         else
             while IFS= read -r f; do
                 [[ $f == status/* || $f == */status.json ]] && continue
                 mkdir -p "$dest/${f%/*}"; git -C "$repo" show "$src:$f" > "$dest/$f"; n=$((n + 1))
-            done < <(git -C "$repo" diff --name-only --diff-filter=d "origin/main...$src")
+            done < <(git -C "$repo" diff --name-only --diff-filter=d "$base...$src")
         fi
         say "overlaid $n files from $src"
     done
