@@ -21,7 +21,8 @@ sub current () {
         usemultiplicity => $Config{usemultiplicity} ? 1 : 0,
         use64bitall => $Config{use64bitall} ? 1 : 0,
         use64bitint => $Config{use64bitint} ? 1 : 0,
-        usemymalloc => $Config{usemymalloc} ? 1 : 0,
+        usemymalloc => defined($Config{usemymalloc})
+            ? ($Config{usemymalloc} eq 'y' ? 1 : 0) : undef,
         uselongdouble => $Config{uselongdouble} ? 1 : 0,
         usequadmath => $Config{usequadmath} ? 1 : 0,
         debugging => $flags =~ /(?:^|\s)-DDEBUGGING(?:\s|$)/ ? 1 : 0,

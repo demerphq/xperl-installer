@@ -1,6 +1,7 @@
 use strict;
 use warnings;
 use FindBin;
+use Config;
 use lib "$FindBin::Bin/../lib";
 use File::Path qw(make_path);
 use File::Spec;
@@ -23,6 +24,9 @@ like($platform->{build_id}, qr/\A[0-9a-f]{64}\z/,
      'build configuration has a stable digest');
 is($platform->{build}{rc_stack}, Internals::stack_refcounted() & 1,
    'build configuration records the reference-counted stack');
+is($platform->{build}{usemymalloc},
+   defined($Config{usemymalloc}) ? ($Config{usemymalloc} eq 'y' ? 1 : 0) : undef,
+   'build configuration interprets the allocator setting as y or n');
 is(XPerl::Installer::Platform::current()->{build_id}, $platform->{build_id},
    'the same interpreter reports the same build identity');
 
