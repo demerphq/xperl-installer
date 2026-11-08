@@ -12,7 +12,7 @@ self=$(perl -MCwd=abs_path -e 'print abs_path(shift)' "${BASH_SOURCE[0]}" 2>/dev
 WS=${XPW_WS:-$(cd "$(dirname "$self")/../.." && pwd)}
 XP=${XPW_PERL_PREFIX:-$HOME/perl5/perlbrew/perls/xperl}
 P544=${XPW_P544:-$HOME/perl-5.44.0}
-CACHE=${XPW_CACHE:-$WS/tmp/xperl-cache}
+CACHE=${XPW_CACHE:-$HOME/.xperl/cache}
 REGISTRY=${XPW_REGISTRY:-$WS/xperl-cpan-ports}
 COMMS=$WS/xperl-installer/.worktrees/agent-comms
 
@@ -27,7 +27,7 @@ clean_env() {
     local IFS=:
     for d in $PATH; do [[ $d == "$HOME/bin" ]] || p+=${p:+:}$d; done
     export PATH="$XP/bin:$p"
-    unset PERL5LIB PERL_MM_OPT PERL_MB_OPT PERL_LOCAL_LIB_ROOT
+    unset PERL5LIB PERL5OPT PERL_MM_OPT PERL_MB_OPT PERL_LOCAL_LIB_ROOT
     # opt-in: XPW_LIB=PREFIX adds PREFIX/lib/perl5 (e.g. a test-deps prefix)
     if [[ -n ${XPW_LIB:-} ]]; then export PERL5LIB=$XPW_LIB/lib/perl5; fi
 }
@@ -43,27 +43,28 @@ environment
   (set XPW_LIB=PREFIX to put PREFIX/lib/perl5 on PERL5LIB for run/perl/repeat)
 
 xperl + installer
-  rebuild REF                rebuild perlbrew xperl from xperl REF (old tree
-                             moved to tmp/), then `xpw cli`
   srcbuild REF DIR PREFIX [CONFIGURE_ARGS...]
-                             build xperl from source in DIR for PREFIX
-  coretest DIR               full core test_harness of a srcbuild tree
+                             build xperl REF from a git clone in DIR for
+                             PREFIX (records git_commit_id; no install)
+  coretest DIR               full core test_harness of a srcbuild tree; then
+                             `make install` in DIR only if it passes
   cli                        install xperl-install from installer origin/main
                              into site_perl, plus Module::Build
   install [-p PREFIX] [-w WORKDIR] [--] ARGS...
-                             xperl-install install with workspace defaults
-                             (prefix: perlbrew xperl; workdir: tmp/install/<stamp>)
+                             xperl-install install into XPW_PERL_PREFIX with
+                             workdir tmp/install/<stamp>; jobs and cache are
+                             the installer's defaults unless passed
 
 porting
   fetch CPAN_PATH            print local path of a release archive (downloads
                              into the cache if missing), e.g. R/RE/REHSACK/Foo-1.0.tar.gz
   unpack CPAN_PATH DIR       extract into DIR/orig and DIR/work, print sha256
   mkpatch DIR [OUT]          diff DIR/orig vs DIR/work into an a/b patch
-                             (default DIR/<dist>.patch), dry-run it on a fresh
-                             extract, print sha256
-  entry PORTDIR ID RECIPE XRES ORES
-                             (in a ports worktree) new registry entry from a
-                             port dir: index.json, patch, evidence
+                             (default DIR/<dist>.patch) with the installer's
+                             patch generator (added and removed files included),
+                             apply it to a fresh extract and check the result
+                             matches DIR/work, print sha256. register patches
+                             through the installer's registry/receipt path
   registry DEST [BRANCH|WORKTREE]...
                              ports snapshot: origin/main plus each source's
                              changed files (branch, or worktree incl. uncommitted)
@@ -92,9 +93,8 @@ settings (environment)
                       script, i.e. the directory holding xperl-installer)
   XPW_PERL_PREFIX     xperl install prefix (default: perlbrew perls/xperl)
   XPW_P544            perl 5.44 control install (default: ~/perl-5.44.0)
-  XPW_CACHE           download cache (default: WS/tmp/xperl-cache)
+  XPW_CACHE           download cache (default: the installer's ~/.xperl/cache)
   XPW_REGISTRY        ports checkout (default: WS/xperl-cpan-ports)
-  XPW_OPENSSL_PREFIX  OpenSSL for rebuild (default: homebrew openssl@4 if present)
   XPW_TEST_JOBS       coretest parallelism (default: 8)
   comms expects the agent-comms worktree at WS/xperl-installer/.worktrees/agent-comms
 EOF
@@ -131,40 +131,6 @@ cmd_cli() {
     fi
 }
 
-# version (e.g. 5.45.5) of the xperl source at COMMIT, from patchlevel.h
-xperl_source_version() {
-    git -C "$WS/xperl" show "$1:patchlevel.h" | perl -ne '
-        $v{$1} = $2 if /^#define\s+PERL_(REVISION|VERSION|SUBVERSION)\s+(\d+)/;
-        END { print join ".", @v{qw(REVISION VERSION SUBVERSION)} }'
-}
-
-# quick perlbrew rebuild of the perl at XPW_PERL_PREFIX (named after its
-# directory) with --notest; use srcbuild + coretest when the suite matters
-cmd_rebuild() {
-    local ref=${1:?usage: xpw rebuild REF} commit tarball aside version name perlbrew
-    clean_env
-    perlbrew=$(command -v perlbrew || printf '%s' "$HOME/perl5/perlbrew/bin/perlbrew")
-    [[ -x $perlbrew ]] || die "perlbrew not found"
-    git -C "$WS/xperl" fetch -q origin
-    commit=$(git -C "$WS/xperl" rev-parse --short=10 "$ref")
-    version=$(xperl_source_version "$commit")
-    name=$(basename "$XP")
-    mkdir -p "$HOME/perl5/perlbrew/dists"
-    tarball=$HOME/perl5/perlbrew/dists/perl-$version.tar.gz
-    git -C "$WS/xperl" archive --format=tar.gz --prefix="perl-$version/" -o "$tarball" "$commit"
-    if [[ -d $XP ]]; then
-        aside=$WS/tmp/old-perlbrew-$name-$(stamp)
-        mv "$XP" "$aside"; say "moved old $name to $aside"
-    fi
-    say "building xperl $commit as $name (log: $WS/tmp/perlbrew-rebuild-$commit.log)"
-    # XPW_OPENSSL_PREFIX, else homebrew's openssl@4 when present
-    local openssl=${XPW_OPENSSL_PREFIX:-}
-    [[ -z $openssl && -d /opt/homebrew/opt/openssl@4 ]] && openssl=/opt/homebrew/opt/openssl@4
-    OPENSSL_PREFIX=$openssl "$perlbrew" install \
-        "$tarball" --as "$name" -j 16 --notest -D usedevel -U versiononly \
-        > "$WS/tmp/perlbrew-rebuild-$commit.log" 2>&1 || die "perlbrew build failed"
-    cmd_cli
-}
 
 # build xperl REF from source in DIR for PREFIX (not perlbrew's own build, so
 # the tested tree is what gets installed); extra args go to Configure
@@ -191,8 +157,8 @@ cmd_srcbuild() {
 cmd_coretest() {
     local dir=${1:?usage: xpw coretest DIR}
     clean_env
-    ( cd "$dir" && TEST_JOBS=${XPW_TEST_JOBS:-8} make -j16 test_harness ) > "$dir.test.log" 2>&1
-    local rc=$?
+    local rc=0
+    ( cd "$dir" && TEST_JOBS=${XPW_TEST_JOBS:-8} make -j16 test_harness ) > "$dir.test.log" 2>&1 || rc=$?
     tail -n 25 "$dir.test.log"
     return $rc
 }
@@ -201,7 +167,9 @@ cmd_install_inner() {
     local prefix=$1 workdir=$2; shift 2
     mkdir -p "$workdir"
     say "prefix $prefix, workdir $workdir"
-    xperl-install install --jobs 8 --registry "$REGISTRY" --cache "$CACHE" \
+    # job counts and the cache are the installer's own defaults unless the
+    # caller passes them (or sets XPW_CACHE)
+    xperl-install install --registry "$REGISTRY" ${XPW_CACHE:+--cache "$XPW_CACHE"} \
         --prefix "$prefix" --workdir "$workdir" "$@"
 }
 
@@ -241,31 +209,57 @@ cmd_unpack() {
     printf 'unpacked %s\nsha256 %s\n' "$(ls "$dir/orig")" "$(shasum -a 256 "$f" | cut -d' ' -f1)"
 }
 
+# the installer's own patch generator (XPerl::Installer::Proposal): changed,
+# added and removed source files, skipping build products. prints the files
+# in the patch and, on stderr, new files it left out.
+proposal_patch() {
+    local orig=$1 work=$2 out=$3
+    perl -I"$WS/xperl-installer/lib" -MXPerl::Installer::Proposal -e '
+        my ($orig, $work, $out) = @ARGV;
+        my $P = "XPerl::Installer::Proposal";
+        my $old = XPerl::Installer::Proposal::files($orig);
+        my $now = XPerl::Installer::Proposal::files($work);
+        my $manifest = $P->manifest_files($work);
+        my (%new, @left_out);
+        for my $f (sort grep { !$old->{$_} } keys %$now) {
+            if ($P->patchable_new_file($work, $f, $manifest)) { $new{$f} = 1 }
+            elsif (!$P->build_product($work, $f)) { push @left_out, $f }
+        }
+        my $r = $P->write_patch(original => $orig, source => $work,
+                                path => $out, new_files => \%new);
+        print "$_\n" for @{ $r->{files} };
+        warn "xpw: new file left out of the patch (not source-shaped): $_\n"
+            for @left_out;
+    ' "$orig" "$work" "$out"
+}
+
 cmd_mkpatch() {
-    local dir=${1:?usage: xpw mkpatch DIR [OUT]} out dist f n=0 chk
+    local dir=${1:?usage: xpw mkpatch DIR [OUT]} out dist chk files n rest
     dir=$(cd "$dir" && pwd)
     dist=$(ls "$dir/orig")
     out=${2:-$dir/$dist.patch}
     : > "$out"; out=$(cd "$(dirname "$out")" && pwd)/$(basename "$out")
-    while IFS= read -r f; do
-        diff -u --label "a/$f" --label "b/$f" "$dir/orig/$dist/$f" "$dir/work/$dist/$f" >> "$out" || true
-        n=$((n + 1))
-    done < <(diff -rq "$dir/orig/$dist" "$dir/work/$dist" \
-             | sed -nE "s#^Files $dir/orig/$dist/(.*) and .* differ\$#\\1#p" | sort)
+    clean_env
+    files=$(proposal_patch "$dir/orig/$dist" "$dir/work/$dist" "$out") || die "patch generation failed"
+    n=$(grep -c . <<<"$files" || true)
     (( n )) || die "no changed files"
     # a file that only loses lines is usually build damage (e.g. a truncated
     # README), not an intended change
     awk '/^\+\+\+ /{f=$2; next} /^--- /{next} /^@@/{next} /^\+/{add[f]=1} /^-/{del[f]=1}
-         END{for (f in del) if (!add[f]) print f}' "$out" |
+         END{for (f in del) if (!add[f] && f != "/dev/null") print f}' "$out" |
         while IFS= read -r f; do say "warning: $f only loses lines; check it is not build damage"; done
-    local only; only=$(diff -rq "$dir/orig/$dist" "$dir/work/$dist" | grep -c '^Only in' || true)
-    (( only )) && say "note: $only paths exist in only one tree (build output?) and are not in the patch"
+    # verify the tree, not just applicability: the patched pristine release
+    # must have the same source files as the work tree
     chk=$(mktemp -d "$dir/chk.XXXX")
     tar -xzf "$(cmd_fetch "$(cat "$dir/.cpan_path")")" -C "$chk"
-    ( cd "$chk/$dist" && patch -p1 --dry-run -s < "$out" ) || die "patch does not apply cleanly"
+    ( cd "$chk/$dist" && patch -p1 -E -s < "$out" ) || die "patch does not apply cleanly"
+    rest=$(proposal_patch "$chk/$dist" "$dir/work/$dist" "$chk/rest.patch" 2>/dev/null) \
+        || die "verification failed"
+    [[ -z $rest ]] || die "patched release differs from the work tree in: $(tr '\n' ' ' <<<"$rest")"
     rm -rf "$chk"
     printf 'patch  %s\nfiles  %d, hunks %d\nsha256 %s\n' "$out" "$n" "$(grep -c '^@@' "$out")" \
         "$(shasum -a 256 "$out" | cut -d' ' -f1)"
+    printf '%s\n' "$files" | sed 's/^/       /'
 }
 
 # registry snapshot for a batch: origin/main of the ports repo, overlaid with
@@ -296,43 +290,6 @@ cmd_registry() {
         say "overlaid $n files from $src"
     done
     printf '%s\n' "$dest"
-}
-
-# write index.json, patch and evidence for a new registry entry from a port
-# dir made by `xpw unpack` + `xpw mkpatch`. run inside a ports worktree.
-cmd_entry() {
-    local u='usage: xpw entry PORTDIR PATCH_SET_ID RECIPE XPERL_RESULT PERL544_RESULT'
-    local dir=${1:?$u} id=${2:?$u} recipe=${3?$u} xres=${4:?$u} ores=${5:?$u}
-    local cp dist rel author ver pre D ps ss rec commit
-    [[ -f data/../registry.json ]] || die "run inside an xperl-cpan-ports worktree"
-    dir=$(cd "$dir" && pwd); cp=$(cat "$dir/.cpan_path"); dist=$(ls "$dir/orig")
-    clean_env
-    rel=${cp##*/}; rel=${rel%.tar.gz}; rel=${rel%.tgz}
-    author=$(cut -d/ -f3 <<<"$cp"); ver=${rel##*-}; dist=${rel%-*}
-    pre=$(perl -e 'use builtin qw(siphash_2_4); no warnings; print unpack("H2", siphash_2_4($ARGV[0], "\0" x 16))' "$author/$dist")
-    D=data/$pre/$author/$dist
-    [[ -e $D/index.json ]] && die "$D/index.json exists; edit it instead"
-    mkdir -p "$D/patches" "$D/evidence"
-    cp "$dir/$rel.patch" "$D/patches/$id.patch"
-    ps=$(shasum -a 256 "$D/patches/$id.patch" | cut -d' ' -f1)
-    ss=$(shasum -a 256 "$(cmd_fetch "$cp")" | cut -d' ' -f1)
-    commit=$(perl -MConfig -e 'print substr($Config{git_commit_id}, 0, 10)')
-    # this xperl's version and the next minor as the exclusive bound; the
-    # perl control interpreter from XPW_P544
-    local xv xmax ov
-    xv=$(perl -e 'printf "v%vd", $^V')
-    xmax=$(perl -e 'printf "v%d.%d.0", $^V->{version}[0], $^V->{version}[1] + 1')
-    ov=$("$P544/bin/perl" -e 'printf "v%vd", $^V' 2>/dev/null || printf unknown)
-    rec='[]'; [[ -n $recipe ]] && rec="[\"$recipe\"]"
-    jq -n --arg dist "$dist" --arg ver "$ver" --arg p "$cp" --arg ss "$ss" --arg id "$id" --arg ps "$ps" --argjson rec "$rec" --arg xv "$xv" --arg xmax "$xmax" \
-        '{schema:1, distribution:$dist, releases:[{version:$ver, cpan_path:$p, source_sha256:$ss, patch_sets:[{id:$id, xperl:{min_inclusive:$xv, max_exclusive:$xmax}, patches:[{path:("patches/" + $id + ".patch"), sha256:$ps}], recipes:$rec}]}]}' \
-        > "$D/index.json"
-    jq -n --arg ss "$ss" --arg id "$id" --arg ps "$ps" --arg xr "$xres" --arg or "$ores" \
-        --arg date "$(date +%F)" --arg arch "$(perl -MConfig -e 'print $Config{archname}')" \
-        --arg xi "XPerl $xv ($commit)" --arg xv "$xv" --arg oi "Perl $ov" \
-        '{source_sha256:$ss, patch_set_id:$id, patch_sha256:$ps, date:$date, platform:$arch, xperl_version:$xv, tests:[{command:"make test (original archive + patch)", interpreter:$xi, result:$xr},{command:"make test (original archive + patch)", interpreter:$oi, result:$or}]}' \
-        > "$D/evidence/$id-$xv.json"
-    printf 'entry %s\npatch sha256 %s\n' "$D" "$ps"
 }
 
 cmd_repeat() {
@@ -434,7 +391,7 @@ cmd_comms() {
 (( $# )) || { usage; exit 1; }
 c=$1; shift
 case $c in
-    run|perl|info|cli|rebuild|srcbuild|coretest|install|fetch|unpack|mkpatch|entry|registry|repeat|restatus|ab544|comms) "cmd_$c" "$@" ;;
+    run|perl|info|cli|srcbuild|coretest|install|fetch|unpack|mkpatch|registry|repeat|restatus|ab544|comms) "cmd_$c" "$@" ;;
     help|-h|--help) usage ;;
     *) usage; exit 1 ;;
 esac
