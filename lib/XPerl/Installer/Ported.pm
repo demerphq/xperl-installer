@@ -166,6 +166,7 @@ sub run ($class, %args) {
     my $identity = {
         xperl => abs_path($^X),
         xperl_version => "$^V",
+        build_id => XPerl::Installer::Platform::current()->{build_id},
         prefix => $builder->{prefix},
     };
     my $state;

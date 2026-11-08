@@ -87,6 +87,19 @@ close $patch or die $!;
 eval { $registry->patches_for($release) };
 like($@, qr/patch digest mismatch/, 'rejects a modified patch');
 
+# A repair based on an older patch must not replace a newer registry entry.
+my $stale_repair = {
+    status => 'installed', xperl_version => "$^V",
+    proposal => { path => $patch_path, sha256 => sha256_hex($patch_text . "tampered\n"),
+                  files => ['test'] },
+    registry => { patches => ['f' x 64] },
+    phases => [map { { name => $_, exit_status => 0 } }
+               qw(test proposal-check install)],
+};
+eval { $registry->register_repair($release, $stale_repair) };
+like($@, qr/registry patches changed during repair/,
+     'refuses to replace a patch changed during repair');
+
 my $sharded = abs_path(tempdir(CLEANUP => 1,
                       DIR => $ENV{XPERL_TEST_TMPDIR} // File::Spec->tmpdir));
 my $config = {

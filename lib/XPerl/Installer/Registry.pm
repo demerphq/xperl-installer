@@ -255,6 +255,12 @@ sub register_repair ($self, $release, $record) {
     } @{$entry->{patch_sets}};
     die "ambiguous patch sets for repaired release\n" if @active > 1;
     my $set = $active[0];
+    # A concurrent repair may have replaced the patch while this build ran.
+    # Its proposal would then omit the other repair, so leave it for review.
+    my @current = $set ? map { $_->{sha256} } @{$set->{patches} // []} : ();
+    my @used = @{$record->{registry}{patches} // []};
+    die "registry patches changed during repair; retry against the current patch\n"
+        unless join(',', @current) eq join(',', @used);
     if (!$set) {
         $set = {
             id => "repair-$xperl",

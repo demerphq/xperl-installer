@@ -7,8 +7,10 @@ use Archive::Tar;
 use CPAN::Meta;
 use Config;
 use Cwd qw(abs_path getcwd);
+use Digest::SHA;
 use Fcntl qw(:flock);
 use File::Basename qw(dirname);
+use File::Copy qw(copy);
 use File::Find qw(finddepth);
 use File::Path qw(make_path);
 use File::Spec;
@@ -234,7 +236,7 @@ sub install ($self, $release, %options) {
             make_path($original_dir);
             $original = _unpack($release->{archive}, $original_dir);
         }
-        my @recipes;
+        my (@recipes, @applied_patches);
         if ($self->{registry}) {
             my $selection = $self->{registry}->patches_for($release);
             @recipes = @{$selection->{recipes} // []};
@@ -248,8 +250,18 @@ sub install ($self, $release, %options) {
             my $number = 0;
             for my $patch (@{$selection->{patches}}) {
                 my $log = File::Spec->catfile($work, "patch-" . ++$number . ".log");
+                my $saved = File::Spec->catfile($work, "registry-patch-$number.patch");
+                copy($patch->{path}, $saved)
+                    or die "cannot copy registry patch to $saved: $!\n";
+                open my $patch_file, '<:raw', $saved
+                    or die "cannot read copied patch $saved: $!\n";
+                my $digest = Digest::SHA->new(256)->addfile($patch_file)->hexdigest;
+                close $patch_file or die "cannot close copied patch $saved: $!\n";
+                die "registry patch changed while copying: $patch->{path}\n"
+                    unless $digest eq $patch->{sha256};
+                push @applied_patches, { path => $saved, sha256 => $patch->{sha256} };
                 my @command = ('patch', '--batch', '--forward', '-p1',
-                               '-i', $patch->{path});
+                               '-i', $saved);
                 my $status = $self->_run($source, $log, @command);
                 push @{$record->{phases}}, {
                     name => 'patch', command => \@command,
@@ -389,6 +401,8 @@ sub install ($self, $release, %options) {
                     source_sha256 => $release->{sha256},
                     xperl => $perl,
                     xperl_version => "$^V",
+                    platform => $record->{platform},
+                    applied_patches => \@applied_patches,
                     failed_phase => $phase,
                     ($configuration_error
                         ? (validation_error => $configuration_error) : ()),

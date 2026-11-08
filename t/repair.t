@@ -148,6 +148,39 @@ print {$config_file} TOML::Tiny->new->encode({
 });
 close $config_file or die $!;
 
+# Start with an existing fix so the agent must extend the complete patch.
+my $existing_dir = File::Spec->catdir($registry, 'distributions', 'Example-Fixable');
+my $existing_patches = File::Spec->catdir($existing_dir, 'patches');
+make_path($existing_patches);
+my $existing_text = <<'PATCH';
+--- a/Makefile.PL
++++ b/Makefile.PL
+@@ -1,2 +1,3 @@
+ use ExtUtils::MakeMaker;
++# Existing fix
+ WriteMakefile(NAME => 'Example::Fixable', VERSION => '1.00');
+PATCH
+my $existing_path = File::Spec->catfile($existing_patches, 'existing.patch');
+open my $existing_file, '>:raw', $existing_path or die $!;
+print {$existing_file} $existing_text;
+close $existing_file or die $!;
+my $archive = File::Spec->catfile($releases, 'Example-Fixable-1.00.tar.gz');
+open my $archive_file, '<:raw', $archive or die $!;
+my $archive_sha = Digest::SHA->new(256)->addfile($archive_file)->hexdigest;
+close $archive_file or die $!;
+my $existing_index = {
+    schema => 1, distribution => 'Example-Fixable', releases => [{
+        version => '1.00', cpan_path => 'E/EX/EXAMPLE/Example-Fixable-1.00.tar.gz',
+        source_sha256 => $archive_sha, patch_sets => [{
+            id => 'existing', xperl => { min_inclusive => "$^V", max_exclusive => 'v99.0.0' },
+            patches => [{ path => 'patches/existing.patch', sha256 => sha256_hex($existing_text) }],
+        }],
+    }],
+};
+open my $index_file, '>', File::Spec->catfile($existing_dir, 'index.json') or die $!;
+print {$index_file} JSON::PP->new->encode($existing_index);
+close $index_file or die $!;
+
 local $ENV{XPERL_REPAIR_MARKER} = File::Spec->catfile($root, 'request.json');
 my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl-install');
 open my $pipe, '-|', $^X, $script, 'install', '--config', $config_path,
@@ -160,7 +193,7 @@ my $receipt_path = $result->{receipts}[0];
 open my $receipt_file, '<', $receipt_path or die $!;
 my $receipt = JSON::PP->new->decode(do { local $/; <$receipt_file> });
 is_deeply([map { $_->{name} } @{$receipt->{phases}}],
-          [qw(configure build test repair configure build test proposal-check install)],
+          [qw(patch configure build test repair configure build test proposal-check install)],
           'installer reran all checks after repair');
 my $proposal = $receipt->{proposal};
 ok($proposal && -f $proposal->{path}, 'reviewable patch was written');
@@ -173,15 +206,24 @@ open my $patch_file, '<:raw', $proposal->{path} or die $!;
 my $patch = do { local $/; <$patch_file> };
 is(sha256_hex($patch), $proposal->{sha256}, 'receipt records patch digest');
 like($patch, qr/\+sub value \{ 42 \}/, 'patch contains source repair');
+like($patch, qr/\+# Existing fix/, 'consolidated patch retains the existing fix');
 like($patch, qr/^\+\+\+ b\/lib\/Example\/Added\.pm$/m,
      'patch contains agent-added source file');
-unlike($patch, qr/^\+\+\+ b\/(?:Makefile|blib\/)/m,
+unlike($patch, qr/^\+\+\+ b\/(?:Makefile$|blib\/)/m,
        'patch excludes generated build products');
 unlike($patch, qr/Attribute\.o/, 'patch excludes an agent-built object file');
 unlike($patch, qr/tmp2/, 'patch excludes a test scratch file');
 open my $request_file, '<', $ENV{XPERL_REPAIR_MARKER} or die $!;
 my $request = JSON::PP->new->decode(do { local $/; <$request_file> });
 is($request->{failed_phase}, 'test', 'agent received failed phase');
+like($request->{platform}{build_id}, qr/\A[0-9a-f]{64}\z/,
+     'agent received the interpreter build identity');
+is($request->{applied_patches}[0]{sha256}, sha256_hex($existing_text),
+   'agent received the existing patch digest');
+open my $copied_patch, '<:raw', $request->{applied_patches}[0]{path} or die $!;
+is(do { local $/; <$copied_patch> }, $existing_text,
+   'agent received a copy of the existing patch');
+close $copied_patch or die $!;
 is($request->{registry}, $registry, 'agent received the registry location');
 like($request->{guidance}, qr/not making progress.*manual_step/,
      'agent receives guidance to hand an unproductive repair to a human');

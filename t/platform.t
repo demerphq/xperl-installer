@@ -18,6 +18,14 @@ close $output or die $!;
 
 sub detect { [XPerl::Installer::Platform::native_prefixes(@_)] }
 
+my $platform = XPerl::Installer::Platform::current();
+like($platform->{build_id}, qr/\A[0-9a-f]{64}\z/,
+     'build configuration has a stable digest');
+is($platform->{build}{rc_stack}, Internals::stack_refcounted() & 1,
+   'build configuration records the reference-counted stack');
+is(XPerl::Installer::Platform::current()->{build_id}, $platform->{build_id},
+   'the same interpreter reports the same build identity');
+
 is_deeply(detect(env => { HOMEBREW_PREFIX => $other }, os => 'linux',
                  candidates => [$brew]),
           [$other], 'HOMEBREW_PREFIX names the native prefix');

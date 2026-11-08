@@ -271,6 +271,10 @@ digest, XPerl executable and version, attempt number, source directory,
 failed phase, command, log path, and `response_path`. When a registry patch
 set names migration recipes, `recipes` contains their IDs and absolute
 Markdown paths. If a registry is configured, `registry` gives its root.
+`platform.build` describes the interpreter configuration and `build_id`
+identifies it. `applied_patches` lists copies of the registry patches applied
+to this source, with their digests. The agent should retain those changes in
+its consolidated repair and check whether the result is valid for other builds.
 `guidance` tells provider wrappers to stop an unproductive debug/change loop
 and return an honest handoff to the human.
 The repair program may inspect and change any available checkout needed to

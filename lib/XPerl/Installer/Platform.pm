@@ -4,14 +4,41 @@ use strict;
 use warnings;
 use feature 'signatures';
 use Config;
+use Digest::SHA qw(sha256_hex);
 use File::Spec;
+use JSON::PP;
 
-# Identity of the host and interpreter that produced a result. The key
-# separates observations whose builds can differ: the operating system and
-# the interpreter's architecture name, which already distinguishes thread
-# and 64-bit variants. The remaining fields are descriptive.
+# The platform key identifies the OS and architecture. The separate build
+# digest distinguishes interpreter configurations within that platform.
 sub current () {
     my $compiler = $Config{gccversion} || $Config{ccversion} || '';
+    my $flags = $Config{ccflags} // '';
+    my $stack = eval { Internals::stack_refcounted() & 1 };
+    my $build = {
+        schema => 1,
+        xperl_commit => $Config{git_commit_id} // '',
+        useithreads => $Config{useithreads} ? 1 : 0,
+        usemultiplicity => $Config{usemultiplicity} ? 1 : 0,
+        use64bitall => $Config{use64bitall} ? 1 : 0,
+        use64bitint => $Config{use64bitint} ? 1 : 0,
+        usemymalloc => $Config{usemymalloc} ? 1 : 0,
+        uselongdouble => $Config{uselongdouble} ? 1 : 0,
+        usequadmath => $Config{usequadmath} ? 1 : 0,
+        debugging => $flags =~ /(?:^|\s)-DDEBUGGING(?:\s|$)/ ? 1 : 0,
+        rc_stack => defined($stack) ? 0 + $stack : undef,
+        ptrsize => $Config{ptrsize},
+        ivsize => $Config{ivsize},
+        nvsize => $Config{nvsize},
+        nvtype => $Config{nvtype},
+        byteorder => $Config{byteorder},
+        compiler_version => $compiler,
+    };
+    # Flags can contain local paths. Hash them for identity without publishing
+    # those paths in portable registry evidence.
+    $build->{flags_sha256} = sha256_hex(JSON::PP->new->canonical->encode({
+        map { $_ => $Config{$_} // '' } qw(cc ccflags optimize ld ldflags)
+    }));
+    my $build_id = sha256_hex(JSON::PP->new->canonical->encode($build));
     return {
         key          => "$^O/$Config{archname}",
         os           => $^O,
@@ -23,6 +50,8 @@ sub current () {
         usethreads   => $Config{usethreads} ? 1 : 0,
         use64bitall  => $Config{use64bitall} ? 1 : 0,
         xperl_commit => $Config{git_commit_id} // '',
+        build_id     => $build_id,
+        build        => $build,
     };
 }
 
