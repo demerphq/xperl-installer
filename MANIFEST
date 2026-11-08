@@ -18,6 +18,7 @@ lib/XPerl/Installer/Ported.pm
 lib/XPerl/Installer/Proposal.pm
 lib/XPerl/Installer/Registry.pm
 planning/bootstrap.md
+planning/automatic-ports-publication.md
 planning/claude-code-prompt.md
 planning/collaborator-bootstrap.md
 planning/kensho-rc-split/README.md
