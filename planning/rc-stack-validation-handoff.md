@@ -110,8 +110,8 @@ cd ..
 
 The installer is `xperl-install`; the interpreter is XPerl. Install and sign
 in to the desired coding-agent CLI separately. No wrapper script is needed.
-Codex defaults to `gpt-6.1-sol` with high reasoning effort. Claude uses its
-configured CLI model unless a TOML profile specifies one. See the README's
+Codex defaults to `gpt-6.1-sol` with high reasoning effort. Claude defaults to
+`sonnet` unless a TOML profile specifies a model. See the README's
 configuration section for `model`, `effort`, `executable`, and `add_dirs`.
 
 Example Darwin batch, using the interpreter's own site library:

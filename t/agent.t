@@ -14,6 +14,13 @@ is($codex->{model}, 'gpt-6.1-sol', 'Codex repairs use the selected Sol model');
 is($codex->{effort}, 'high', 'Codex repairs use high reasoning effort');
 is(XPerl::Installer::Agent->profile('claude')->{provider}, 'claude',
    'Claude is built in');
+my $claude_default = XPerl::Installer::Agent->profile('claude');
+is($claude_default->{model}, 'sonnet',
+   'Claude repairs default to the current Sonnet, not the CLI default');
+is(XPerl::Installer::Agent->profile('claude', { model => 'claude-opus-5-5' })->{model},
+   'claude-opus-5-5', 'an explicit Claude model overrides the default');
+is(XPerl::Installer::Agent->profile('porter', { provider => 'claude' })->{model},
+   'sonnet', 'named Claude profiles get the same default');
 my $ok = eval { XPerl::Installer::Agent->profile('typo'); 1 };
 like($ok ? '' : $@, qr/unknown repair agent typo/,
      'unknown providers require an explicit custom profile');

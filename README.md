@@ -144,16 +144,23 @@ command = "/home/me/bin/another-repair-tool"
 
 For example, `xperl-install install --config config.toml --agent claude
 Module::Name` chooses Claude Code. `--agent codex` chooses Codex, defaulting
-to `gpt-6.1-sol` with high reasoning effort. Claude uses its own configured
-model unless `model` is specified. Both adapters accept `model`, `effort`,
-`executable`, and `add_dirs`. A named profile such as `[agents.porter]` can
-select `provider = "claude"` or `provider = "codex"`.
+to `gpt-6.1-sol` with high reasoning effort. Claude defaults to `sonnet`, the
+Claude Code alias for the current Sonnet model, rather than the CLI's own
+default, which may be a larger and costlier model. Set `model` to choose
+another, for example `model = "claude-opus-5-5"`. Both adapters accept
+`model`, `effort`, `executable`, and `add_dirs`. A named profile such as
+`[agents.porter]` can select `provider = "claude"` or `provider = "codex"`.
 
 The provider CLI runs noninteractively in the distribution source directory.
 Codex uses its `workspace-write` sandbox. Claude accepts edits and permits
-its Bash, Read, Edit, Write, Glob, and Grep tools without prompting. Both
-receive shared instructions for build configurations, existing patches,
-recipes, missing dependencies, and unattended human handoff. The installer
+its Bash, Read, Edit, Write, Glob, and Grep tools without prompting. Claude
+has no equivalent write sandbox: its file-editing tools stay within the
+working directories, but Bash can change anything the user can, including
+the installed interpreter and a registry checkout. Claude also loads the
+user's own settings, hooks, plugins, MCP servers and instruction files in
+these sessions. Both providers receive shared instructions for build
+configurations, existing patches, recipes, missing dependencies, and
+unattended human handoff. The installer
 supervises timeouts and retries, reruns the builds and tests, and registers
 successful repairs in a configured writable registry. Its normal invocation
 does not require another agent to manage the run.
