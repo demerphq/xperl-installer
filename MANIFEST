@@ -21,6 +21,7 @@ planning/bootstrap.md
 planning/claude-code-prompt.md
 planning/collaborator-bootstrap.md
 planning/perldev-AGENTS.md
+planning/rc-stack-validation-handoff.md
 planning/xperl-package-manager.md
 t/agent.t
 t/build.t
