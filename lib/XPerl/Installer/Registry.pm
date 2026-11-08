@@ -133,6 +133,41 @@ sub patches_for ($self, $release) {
     };
 }
 
+# Earlier releases can contain useful migration work even when their patch
+# cannot be applied to the archive being repaired.
+sub known_patches_for ($self, $release) {
+    my $base = $self->_distribution_directory($release);
+    my $index = File::Spec->catfile($base, 'index.json');
+    return [] unless -f $index;
+    my $data = _read_json($index);
+    die "unsupported registry schema in $index\n"
+        unless $data->{schema} == 1
+            && $data->{distribution} eq $release->{distribution};
+    my $patch_base = abs_path(File::Spec->catdir($base, 'patches'));
+    my @known;
+    for my $entry (@{$data->{releases}}) {
+        for my $set (@{$entry->{patch_sets}}) {
+            for my $patch (@{$set->{patches}}) {
+                my $relative = $patch->{path};
+                die "invalid registry patch path: $relative\n"
+                    unless defined($relative)
+                        && $relative =~ m{\Apatches/[A-Za-z0-9_.-]+\.patch\z};
+                my $real = abs_path(File::Spec->catfile($base, split m{/}, $relative));
+                die "patch escapes registry: $relative\n"
+                    unless defined $real && defined $patch_base
+                        && index($real, "$patch_base/") == 0;
+                my $digest = Digest::SHA::sha256_hex(_read_file($real));
+                die "patch digest mismatch: $relative\n"
+                    unless $digest eq ($patch->{sha256} // '');
+                push @known, { path => $real, sha256 => $digest,
+                    version => $entry->{version}, cpan_path => $entry->{cpan_path},
+                    patch_set => $set->{id} };
+            }
+        }
+    }
+    return \@known;
+}
+
 sub _distribution_directory ($self, $release) {
     my $distribution = $release->{distribution};
     return File::Spec->catdir($self->{path}, 'distributions', $distribution)

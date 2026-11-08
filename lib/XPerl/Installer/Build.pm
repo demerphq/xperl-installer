@@ -392,6 +392,23 @@ sub install ($self, $release, %options) {
                 # needs no write access to the installer's work directory.
                 my $response_path = File::Spec->catfile($source,
                                                         ".xperl-repair-$attempt-response.json");
+                my @known_patches;
+                if ($self->{registry}) {
+                    my $number = 0;
+                    for my $patch (@{$self->{registry}->known_patches_for($release)}) {
+                        my $saved = File::Spec->catfile($work,
+                            'known-patch-' . ++$number . '.patch');
+                        copy($patch->{path}, $saved)
+                            or die "cannot copy registry patch to $saved: $!\n";
+                        open my $file, '<:raw', $saved
+                            or die "cannot read copied patch $saved: $!\n";
+                        my $digest = Digest::SHA->new(256)->addfile($file)->hexdigest;
+                        close $file or die "cannot close copied patch $saved: $!\n";
+                        die "registry patch changed while copying: $patch->{path}\n"
+                            unless $digest eq $patch->{sha256};
+                        push @known_patches, { %$patch, path => $saved };
+                    }
+                }
                 my $request = {
                     schema => 1,
                     attempt => $attempt,
@@ -403,6 +420,7 @@ sub install ($self, $release, %options) {
                     xperl_version => "$^V",
                     platform => $record->{platform},
                     applied_patches => \@applied_patches,
+                    known_patches => \@known_patches,
                     failed_phase => $phase,
                     ($configuration_error
                         ? (validation_error => $configuration_error) : ()),

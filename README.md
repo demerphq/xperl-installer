@@ -275,6 +275,9 @@ Markdown paths. If a registry is configured, `registry` gives its root.
 identifies it. `applied_patches` lists copies of the registry patches applied
 to this source, with their digests. The agent should retain those changes in
 its consolidated repair and check whether the result is valid for other builds.
+`known_patches` supplies copies from all recorded releases of the same author
+and distribution as context, with their release and patch-set identities.
+An older patch is guidance; it is not necessarily applicable to this release.
 `guidance` tells provider wrappers to stop an unproductive debug/change loop
 and return an honest handoff to the human.
 The repair program may inspect and change any available checkout needed to

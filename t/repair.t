@@ -164,6 +164,11 @@ my $existing_path = File::Spec->catfile($existing_patches, 'existing.patch');
 open my $existing_file, '>:raw', $existing_path or die $!;
 print {$existing_file} $existing_text;
 close $existing_file or die $!;
+my $older_text = "--- a/old\n+++ b/old\n@@ -1 +1 @@\n-old\n+fixed\n";
+open my $older_file, '>:raw', File::Spec->catfile($existing_patches, 'older.patch')
+    or die $!;
+print {$older_file} $older_text;
+close $older_file or die $!;
 my $archive = File::Spec->catfile($releases, 'Example-Fixable-1.00.tar.gz');
 open my $archive_file, '<:raw', $archive or die $!;
 my $archive_sha = Digest::SHA->new(256)->addfile($archive_file)->hexdigest;
@@ -175,6 +180,13 @@ my $existing_index = {
             id => 'existing', xperl => { min_inclusive => "$^V", max_exclusive => 'v99.0.0' },
             patches => [{ path => 'patches/existing.patch', sha256 => sha256_hex($existing_text) }],
         }],
+    }],
+};
+push @{$existing_index->{releases}}, {
+    version => '0.90', cpan_path => 'E/EX/EXAMPLE/Example-Fixable-0.90.tar.gz',
+    source_sha256 => 'b' x 64, patch_sets => [{
+        id => 'older', xperl => { min_inclusive => "$^V", max_exclusive => 'v99.0.0' },
+        patches => [{ path => 'patches/older.patch', sha256 => sha256_hex($older_text) }],
     }],
 };
 open my $index_file, '>', File::Spec->catfile($existing_dir, 'index.json') or die $!;
@@ -224,6 +236,13 @@ open my $copied_patch, '<:raw', $request->{applied_patches}[0]{path} or die $!;
 is(do { local $/; <$copied_patch> }, $existing_text,
    'agent received a copy of the existing patch');
 close $copied_patch or die $!;
+my ($older_context) = grep { $_->{version} eq '0.90' }
+    @{$request->{known_patches}};
+ok($older_context, 'agent received a patch from an earlier release');
+open my $copied_older, '<:raw', $older_context->{path} or die $!;
+is(do { local $/; <$copied_older> }, $older_text,
+   'earlier-release patch is copied into the work directory');
+close $copied_older or die $!;
 is($request->{registry}, $registry, 'agent received the registry location');
 like($request->{guidance}, qr/not making progress.*manual_step/,
      'agent receives guidance to hand an unproductive repair to a human');
