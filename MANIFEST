@@ -28,6 +28,7 @@ planning/perldev-AGENTS.md
 planning/rc-stack-validation-handoff.md
 planning/split-kensho
 planning/xperl-package-manager.md
+planning/xpw
 t/agent.t
 t/build.t
 t/build_pl.t
