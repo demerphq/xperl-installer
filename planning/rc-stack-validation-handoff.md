@@ -25,13 +25,16 @@ the installer. Do not put the core checkout's `lib` on the installer's `@INC`.
 
 ## Ownership and coordination
 
-Codex owns the Linux RC rebuild and saved batch: Dist::Zilla, Dancer, Plack,
-Task::Kensho, Catalyst, Sereal, Sereal::Encoder and Sereal::Decoder.
+Codex owns the Linux RC rebuild and batch: Dist::Zilla, Dancer, Plack,
+Catalyst, Sereal, Sereal::Encoder and Sereal::Decoder. The earlier saved
+Linux session included Task::Kensho; start the new root list without it.
 
-Claude is asked to own Darwin RC validation: first the new core build and
-its full tests, then Dancer, Plack and Sereal, including Encoder/Decoder.
+Claude owns Task::Kensho and its dependencies on Darwin: first the new RC
+core build and its full tests, then the Task::Kensho installation.
 Confirm local build authorization with Matt if required by that workspace.
-The platforms deliberately overlap: a Linux pass is not a Darwin pass.
+The root lists are separate. Shared dependencies can occur in both trees;
+claim repairs before editing their common patch. Codex will replay Darwin
+repairs on Linux. A Linux pass is not a Darwin pass or vice versa.
 
 The immediate review task for Claude, while build authorization is pending,
 is to review the installer adapters, especially the Claude CLI invocation,
@@ -116,7 +119,7 @@ Example Darwin batch, using the interpreter's own site library:
     --prefix "$rc_prefix" --registry "$PWD/xperl-cpan-ports" \
     --workdir "$PWD/tmp/darwin-rc-work" \
     --jobs 4 --repair-jobs 1 --agent claude \
-    Dancer Plack Sereal Sereal::Encoder Sereal::Decoder \
+    Task::Kensho \
     > "$PWD/tmp/darwin-rc-install.log" 2>&1
 ```
 
