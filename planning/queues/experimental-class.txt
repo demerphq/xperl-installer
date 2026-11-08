@@ -1,0 +1,39 @@
+# Initial CPAN candidates using experimental Perl class syntax.
+# Source: grep.metacpan.org search for experimental::class in *.pm files,
+# sampled on 2026-11-08. Search was still in progress, so this is not exhaustive.
+# Names are installable modules, not distribution identifiers.
+
+Acme::Bitfield
+Acme::MCP
+Acme::Selection::RarestFirst
+Acme::UPnP
+Algorithm::RateLimiter::TokenBucket
+App::FeedDeduplicator
+App::Gimei
+App::LastStats
+App::LinkSite
+Archive::CAR
+At
+Bluesky
+CPANSec::Admin
+Codec::CBOR
+Container::Builder
+DPKG::Packages::Parser
+Daje::Generate
+Devel::Cover
+Digest::Merkle::SHA256
+Net::BitTorrent::DHT
+Net::BitTorrent
+Net::Multicast::PeerDiscovery
+
+# Feature::Compat::Class manages the warning and helps other class users.
+Feature::Compat::Class
+
+# These matches are in builders rather than the primary module.
+# Keep the distributions in the queue, but verify their class use.
+Acme::Parataxis
+Affix
+Alien::SDL3
+Alien::SDL3::image
+Alien::SDL3::ttf
+Alien::Xmake
