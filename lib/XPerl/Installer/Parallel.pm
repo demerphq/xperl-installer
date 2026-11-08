@@ -63,6 +63,11 @@ sub mark_installed ($self, $cpan_path, $receipt) {
 # available). Returns the requests with their node paths and every node.
 sub run ($self, @requests) {
     for my $request (@requests) {
+        if ($self->_stop_requested) {
+            $self->{stopping} = 1;
+            $request->{error} = 'stopped before resolution';
+            next;
+        }
         my $path = eval {
             $request->{release}
                 ? $self->_add_release($request->{release}, force => 1)
@@ -75,12 +80,13 @@ sub run ($self, @requests) {
         }
         $request->{node} = $path;    # undef: already satisfied
     }
-    $self->_expand;
-    $self->_mark_cycles;
+    $self->_expand unless $self->{stopping};
+    $self->_mark_cycles unless $self->{stopping};
 
     $self->_schedule;
     return {
         requests => \@requests,
+        stopped => $self->{stopping} ? JSON::PP::true : JSON::PP::false,
         nodes => [map { $self->_public($_) }
                   sort { $a->{path} cmp $b->{path} } values %{$self->{nodes}}],
     };
@@ -162,6 +168,10 @@ sub _expand ($self) {
     while (my @new = sort { $a->{path} cmp $b->{path} }
                      grep { $_->{state} eq 'new' } values %{$self->{nodes}}) {
         for my $node (@new) {
+            if ($self->_stop_requested) {
+                $self->{stopping} = 1;
+                return;
+            }
             $node->{state} = 'pending';
             my $release = $node->{release};
             my $meta = eval { $self->{builder}->planned_metadata($release) };
@@ -271,10 +281,14 @@ sub _schedule ($self) {
     while (1) {
         # A failed repair is final. While repair is pending, its dependents
         # remain pending too, so they can run as soon as it succeeds.
-        $self->_block_descendants;
-
-        $self->_start_builds(\%running);
-        $self->_start_repairs(\%running, $repair);
+        $self->{stopping} = 1 if $self->_stop_requested;
+        unless ($self->{stopping}) {
+            $self->_block_descendants;
+            $self->_start_builds(\%running);
+            $self->_start_repairs(\%running, $repair)
+                unless $self->_stop_requested;
+        }
+        $self->{stopping} = 1 if $self->_stop_requested;
 
         unless (%running) {
             $self->_block_descendants;
@@ -285,12 +299,17 @@ sub _schedule ($self) {
     }
 }
 
+sub _stop_requested ($self) {
+    return -f File::Spec->catfile($self->{builder}{workdir}, 'stop-requested');
+}
+
 # Build slots are separate from repair slots. Filling one pool never waits
 # for space in the other.
 sub _start_builds ($self, $running) {
     my $active = grep { $_->{kind} eq 'build' } values %$running;
 
     for my $node ($self->_ready) {
+        last if $self->_stop_requested;
         last if $active >= $self->{jobs};
         next unless $self->_needs_met($node);
 
@@ -310,6 +329,7 @@ sub _start_repairs ($self, $running, $repair) {
     for my $node (sort { $a->{path} cmp $b->{path} }
                   grep { $_->{state} eq 'repair_pending' }
                   values %{$self->{nodes}}) {
+        last if $self->_stop_requested;
         last if $active >= $self->{repair_jobs};
 
         my $budget = $self->{builder}{repair_attempts};
@@ -425,7 +445,8 @@ sub _block_descendants ($self) {
 sub _worker ($self, $node, $result_path) {
     my $outcome = eval {
         my $builder = bless { %{$self->{builder}},
-                              repair_command => undef, repair_attempts => 0 },
+                              repair_command => undef, repair_agent => undef,
+                              repair_attempts => 0 },
                             ref $self->{builder};
         my $record = $builder->install($node->{release},
             after_configure => sub ($source) {
@@ -511,6 +532,11 @@ sub _record ($self, $node, $outcome) {
     }
     if ($status eq 'deferred') {
         push @{$node->{deferred}}, $outcome->{attempt};
+        if ($self->_stop_requested) {
+            $self->{stopping} = 1;
+            $node->{state} = 'pending';
+            return;
+        }
         if ($node->{attempts} > 3) {
             $self->_fail($node, 'configure-time prerequisites still missing after '
                 . "$node->{attempts} attempts");
@@ -532,8 +558,7 @@ sub _record ($self, $node, $outcome) {
         $self->_mark_cycles;
         return;
     }
-    if ($self->{builder}{repair_command} && $self->{builder}{repair_attempts}
-        && $outcome->{receipt}) {
+    if ($self->{builder}->repair_enabled && $outcome->{receipt}) {
         $node->{state} = 'repair_pending';
         $node->{reason} = $outcome->{reason} // 'installation failed';
         $node->{receipt} = $outcome->{receipt};

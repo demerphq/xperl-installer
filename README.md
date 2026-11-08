@@ -89,12 +89,34 @@ under `PREFIX/lib/perl5`, it comes first in `@INC` whenever `PERL5LIB` names
 that directory. The installer warns about it and lists it under
 `shadowed_by` in the receipt. Receipts record the layout in `layout`.
 
+## Stopping and resuming
+
+From another terminal, request a graceful stop using the running install's
+work directory:
+
+```sh
+xperl-install stop --workdir /path/to/work
+```
+
+The installer starts no further builds or repairs. Active work finishes,
+including testing and installing a successful repair, then the installer
+saves its results and exits with status 2. For `install`, resume with:
+
+```sh
+xperl-install install --resume --workdir /path/to/work
+```
+
+For `install-ported`, rerun the original command with `--resume`. Resume
+clears the stop request. This is a cooperative stop command; it does not
+change what Ctrl-C or forcibly terminating a process does.
+
 ## Configuration
 
 `--config FILE` reads a TOML file. The format is intentionally small. CLI
-options override values in `[install]`; `--agent NAME` selects a wrapper from
-`[agents.NAME]` only for that install. No agent runs without `--agent` or
-`--repair-command`.
+options override values in `[install]`. `--agent codex` and `--agent claude`
+use built-in adapters and repair instructions, without a config file or a
+wrapper script. Install and sign in to the selected provider's CLI first.
+No agent runs without `--agent` or `--repair-command`.
 
 ```toml
 schema = 1
@@ -105,24 +127,44 @@ registry = "/home/me/perldev/xperl-cpan-ports"
 cache = "/home/me/.xperl/cache"
 
 [agents.codex]
-command = "/home/me/bin/xperl-codex-repair"
+model = "gpt-6.1-sol"
+effort = "high"
 attempts = 16
 timeout = 600
 interval = 10
 
 [agents.claude]
-command = "/home/me/bin/xperl-claude-repair"
 attempts = 16
 timeout = 600
 interval = 10
+
+[agents.other]
+command = "/home/me/bin/another-repair-tool"
 ```
 
 For example, `xperl-install install --config config.toml --agent claude
-Module::Name` chooses the Claude wrapper. `--agent codex` chooses the Codex
-wrapper without changing the installer or registry. Wrapper commands may be
-relative to the config file; other relative paths retain their usual meaning
-from the command's working directory. Keep credentials in the wrapper's
-environment, not in this file.
+Module::Name` chooses Claude Code. `--agent codex` chooses Codex, defaulting
+to `gpt-6.1-sol` with high reasoning effort. Claude uses its own configured
+model unless `model` is specified. Both adapters accept `model`, `effort`,
+`executable`, and `add_dirs`. A named profile such as `[agents.porter]` can
+select `provider = "claude"` or `provider = "codex"`.
+
+The provider CLI runs noninteractively in the distribution source directory.
+Codex uses its `workspace-write` sandbox. Claude accepts edits and permits
+its Bash, Read, Edit, Write, Glob, and Grep tools without prompting. Both
+receive shared instructions for build configurations, existing patches,
+recipes, missing dependencies, and unattended human handoff. The installer
+supervises timeouts and retries, reruns the builds and tests, and registers
+successful repairs in a configured writable registry. Its normal invocation
+does not require another agent to manage the run.
+
+`executable` defaults to the provider's program on `PATH`. Explicit relative
+executable paths, custom commands, and `add_dirs` are relative to the config
+file. `add_dirs` grants the worker access to additional working directories;
+ordinary repairs need none. Keep credentials with the provider CLI rather
+than in the installer config. The request and receipt record the selected
+provider and model. A saved install session keeps those settings for
+`--resume`; an explicit `--agent` or `--repair-command` replaces its selection.
 
 `--cache DIR` selects a download cache directory; the default is
 `$HOME/.xperl/cache`. `--workdir DIR` keeps unpacked builds, logs, and receipts
@@ -243,8 +285,10 @@ a port.
 
 ## Optional repair command
 
-`--repair-command PATH` or `--agent NAME` enables an external repair program after a failed
-configure, build, or test phase. `--repair-attempts N` limits repair calls
+`--agent codex` or `--agent claude` enables a built-in repair adapter after a
+failed configure, build, or test phase. Named TOML profiles configure those
+adapters or select another tool. `--repair-command PATH` accepts a custom
+executable using the protocol below. `--repair-attempts N` limits repair calls
 for one release; the default is sixteen. `--repair-timeout SECONDS` limits each
 call to 600 seconds by default. This is a hang guard, not a measure of repair
 quality. An unchanged source edit stops retries early.
@@ -261,8 +305,8 @@ also serializes agents started by separate installer processes. Selecting
 more than one repair worker permits concurrent agents. A selected agent
 profile can supply `attempts`, `timeout`, `interval`, and `limit`.
 
-The installer never calls a repair program without an explicit selection. The
-command must be an executable file. It runs with the
+The installer never calls a repair program without an explicit selection.
+Custom commands must be executable files. A custom command runs with the
 distribution source directory as its working directory and receives one
 argument: the absolute path to a JSON request file.
 

@@ -110,4 +110,42 @@ $ok = eval { XPerl::Installer::Config->load($path); 1 };
 ok(!$ok, 'empty repair command is rejected');
 like($@, qr/agents\.claude\.command/, 'command error names the profile');
 
+# Built-in providers need settings, not a user-written wrapper.
+open $output, '>:raw', $path or die $!;
+print {$output} <<'TOML';
+schema = 1
+[agents.codex]
+model = 'gpt-6.1-sol'
+effort = 'high'
+add_dirs = ['../ports']
+[agents.porter]
+provider = 'claude'
+executable = 'bin/claude'
+model = 'sonnet'
+TOML
+close $output or die $!;
+$config = XPerl::Installer::Config->load($path);
+is($config->{agents}{codex}{provider}, 'codex', 'known profile implies provider');
+is($config->{agents}{codex}{effort}, 'high', 'provider effort is loaded');
+is($config->{agents}{porter}{provider}, 'claude', 'profiles can alias a provider');
+is($config->{agents}{porter}{executable},
+   File::Spec->catfile($root, qw(bin claude)),
+   'an explicit executable path is relative to the config');
+is_deeply($config->{agents}{codex}{add_dirs},
+          [File::Spec->rel2abs('../ports', $root)],
+          'extra directories are relative to the config');
+
+for my $case (
+    ["provider = 'other'", qr/provider must be codex or claude/],
+    ["effort = 'enormous'", qr/effort is unsupported/],
+    ["add_dirs = 'here'", qr/add_dirs must be a list/],
+    ["command = 'wrapper'\nmodel = 'model'", qr/cannot combine command/],
+) {
+    open $output, '>:raw', $path or die $!;
+    print {$output} "schema = 1\n[agents.codex]\n$case->[0]\n";
+    close $output or die $!;
+    $ok = eval { XPerl::Installer::Config->load($path); 1 };
+    like($ok ? '' : $@, $case->[1], 'invalid provider settings are rejected');
+}
+
 done_testing();

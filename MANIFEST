@@ -6,6 +6,7 @@ README.md
 TRY-A-MODULE.md
 bin/xperl-install
 lib/XPerl/Installer.pm
+lib/XPerl/Installer/Agent.pm
 lib/XPerl/Installer/Build.pm
 lib/XPerl/Installer/Config.pm
 lib/XPerl/Installer/Deps.pm
@@ -21,6 +22,7 @@ planning/claude-code-prompt.md
 planning/collaborator-bootstrap.md
 planning/perldev-AGENTS.md
 planning/xperl-package-manager.md
+t/agent.t
 t/build.t
 t/build_pl.t
 t/config.t

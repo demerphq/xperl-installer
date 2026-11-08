@@ -57,6 +57,7 @@ sub install ($self, $module) {
 # the requested module is already available elsewhere on @INC. A recorded
 # distribution can install C headers or tools without providing a .pm file.
 sub install_release ($self, $release) {
+    $self->_check_stop;
     my $module = $release->{module};
     $self->{needed}->add_string_requirement($module, '0');
     $self->_enter($module);
@@ -71,6 +72,7 @@ sub mark_installed ($self, $cpan_path, $receipt) {
 }
 
 sub _install ($self, $module, $constraint) {
+    $self->_check_stop unless $self->{in_builder};
     $self->{needed}->add_string_requirement($module, $constraint);
     return if $self->_satisfied($module);
     $self->_enter($module);
@@ -93,7 +95,7 @@ sub _install ($self, $module, $constraint) {
     if ($nested) {
         eval { $self->_build($release, $module); 1 } or do {
             my $error = $@ || "installation failed\n";
-            die $error if $error =~ /\Adependency (?:failed|cycle)/;
+            die $error if $error =~ /\A(?:dependency (?:failed|cycle)|XPERL_INSTALL_STOPPED)/;
             my ($reason) = split /\n/, $error;
             die "dependency failed: $release->{cpan_path}: $reason\n";
         };
@@ -148,6 +150,8 @@ sub _build ($self, $release, $module, %options) {
                 _identity_from_path($path);
         }
         return 1 if !$options{force} && $self->_satisfied($module);
+        $self->_check_stop unless $self->{in_builder};
+        local $self->{in_builder} = 1;
         my $receipt = $self->{builder}->install($release,
             after_configure => sub ($source) {
                 for my $name (qw(MYMETA.json MYMETA.yml)) {
@@ -166,6 +170,7 @@ sub _build ($self, $release, $module, %options) {
     };
     return if $built;
     my $error = $@ || "installation failed\n";
+    die $error if $error =~ /\AXPERL_INSTALL_STOPPED/;
     # A failure inside a prerequisite is recorded against that prerequisite;
     # this release failed because of it.
     if ($error !~ /\Adependency (?:failed|cycle)/) {
@@ -173,6 +178,11 @@ sub _build ($self, $release, $module, %options) {
         $self->{failed}{$path} = (split /\n/, $reason)[0];
     }
     die $error;
+}
+
+sub _check_stop ($self) {
+    die "XPERL_INSTALL_STOPPED\n"
+        if -f File::Spec->catfile($self->{builder}{workdir}, 'stop-requested');
 }
 
 sub _install_prereqs ($self, $meta) {

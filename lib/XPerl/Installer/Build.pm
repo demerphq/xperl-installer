@@ -21,6 +21,7 @@ use IPC::Open3;
 use JSON::PP;
 use Symbol qw(gensym);
 use Time::HiRes qw(time);
+use XPerl::Installer::Agent;
 use XPerl::Installer::Platform;
 use XPerl::Installer::Proposal;
 use XPerl::Installer::Fetch;
@@ -31,15 +32,20 @@ sub new ($class, %args) {
     die "work directory is required\n"
         unless defined $args{workdir} && length $args{workdir};
     my $repair_command;
+    die "choose a repair agent or a custom command, not both\n"
+        if defined($args{repair_agent}) && defined($args{repair_command});
+    my $repair_agent = defined $args{repair_agent}
+        ? XPerl::Installer::Agent->prepare($args{repair_agent}) : undef;
     if (defined $args{repair_command}) {
         $repair_command = abs_path($args{repair_command});
         die "repair command must be an executable file\n"
             unless defined $repair_command && -f $repair_command
                 && -x $repair_command;
     }
-    my $repair_attempts = $args{repair_attempts} // ($repair_command ? 16 : 0);
-    die "repair attempts require a repair command\n"
-        if $repair_attempts && !$repair_command;
+    my $repair_attempts = $args{repair_attempts}
+        // ($repair_command || $repair_agent ? 16 : 0);
+    die "repair attempts require a repair command or agent\n"
+        if $repair_attempts && !$repair_command && !$repair_agent;
     die "repair attempts must be a non-negative integer\n"
         unless $repair_attempts =~ /\A\d+\z/;
     my $repair_timeout = $args{repair_timeout} // 600;
@@ -95,6 +101,7 @@ sub new ($class, %args) {
         install_lock => $args{install_lock},
         registry => $args{registry},
         repair_command => $repair_command,
+        repair_agent => $repair_agent,
         repair_attempts => $repair_attempts,
         repair_timeout => $repair_timeout,
         phase_timeout => $phase_timeout,
@@ -109,6 +116,11 @@ sub new ($class, %args) {
             : File::Spec->catfile(File::Spec->tmpdir,
                                   "xperl-repair-$<.lock"),
     }, $class;
+}
+
+sub repair_enabled ($self) {
+    return ($self->{repair_command} || $self->{repair_agent})
+        && $self->{repair_attempts};
 }
 
 # The directories this builder installs modules into: the library and its
@@ -231,7 +243,7 @@ sub install ($self, $release, %options) {
     eval {
         my $source = _unpack($release->{archive}, $work);
         my $original;
-        if ($self->{repair_command} && $self->{repair_attempts}) {
+        if ($self->repair_enabled) {
             my $original_dir = File::Spec->catdir($work, 'original');
             make_path($original_dir);
             $original = _unpack($release->{archive}, $original_dir);
@@ -375,8 +387,12 @@ sub install ($self, $release, %options) {
                     : $timed_out
                     ? "$phase timed out after $self->{phase_timeout} seconds; see $log\n"
                     : "$phase failed (exit $status); see $log\n";
+                if (-f File::Spec->catfile($self->{workdir}, 'stop-requested')) {
+                    $record->{repair_skipped} = 'stop requested';
+                    die $failure;
+                }
                 die $failure
-                    if $phase eq 'install' || !$self->{repair_command}
+                    if $phase eq 'install' || !$self->repair_enabled
                         || $attempt > $self->{repair_attempts};
                 if (defined $self->{repair_limit}
                     && $self->{repair_calls} >= $self->{repair_limit}) {
@@ -432,6 +448,8 @@ sub install ($self, $release, %options) {
                         . 'If you are not making progress, return '
                         . 'needs_user_action with kind manual_step and tell '
                         . 'the human what you tried and what to inspect.',
+                    ($self->{repair_agent}
+                        ? (agent => $self->{repair_agent}) : ()),
                     ($self->{registry}
                         ? (registry => $self->{registry}{path}) : ()),
                 };
@@ -441,7 +459,10 @@ sub install ($self, $release, %options) {
                     ->encode($request);
                 close $request_file
                     or die "cannot close $request_path: $!\n";
-                my @repair_command = ($self->{repair_command}, $request_path);
+                my @repair_command = $self->{repair_agent}
+                    ? XPerl::Installer::Agent->command($self->{repair_agent},
+                                                       $request_path, $request)
+                    : ($self->{repair_command}, $request_path);
                 my $repair_log = File::Spec->catfile($work,
                                                      "repair-$attempt.log");
                 my $before_files = XPerl::Installer::Proposal::files($source);

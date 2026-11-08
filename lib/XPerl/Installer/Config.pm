@@ -66,12 +66,53 @@ sub load ($class, $path) {
         my $profile = $agents->{$name};
         die "config agents.$name must be a table\n"
             unless ref($profile) eq 'HASH';
-        _keys($profile, [qw(command attempts timeout limit interval)], "agents.$name");
-        my $command = $profile->{command};
-        die "config agents.$name.command must be a nonempty string\n"
-            if !defined($command) || ref($command) || !length($command);
-        $profile->{command} = File::Spec->rel2abs($command, $base)
-            unless File::Spec->file_name_is_absolute($command);
+        _keys($profile, [qw(command provider executable model effort add_dirs
+                           attempts timeout limit interval)], "agents.$name");
+        if (exists $profile->{command}) {
+            my $command = $profile->{command};
+            die "config agents.$name.command must be a nonempty string\n"
+                if !defined($command) || ref($command) || !length($command);
+            die "config agents.$name cannot combine command with provider options\n"
+                if grep { exists $profile->{$_} }
+                    qw(provider executable model effort add_dirs);
+            $profile->{command} = File::Spec->rel2abs($command, $base)
+                unless File::Spec->file_name_is_absolute($command);
+        }
+        else {
+            $profile->{provider} //= $name;
+            die "config agents.$name.provider must be codex or claude\n"
+                unless !ref($profile->{provider})
+                    && $profile->{provider} =~ /\A(?:codex|claude)\z/;
+            for my $key (qw(executable model effort)) {
+                next unless exists $profile->{$key};
+                die "config agents.$name.$key must be a nonempty string\n"
+                    if ref($profile->{$key}) || !defined($profile->{$key})
+                        || !length($profile->{$key});
+            }
+            if (exists $profile->{effort}) {
+                my $allowed = $profile->{provider} eq 'codex'
+                    ? qr/\A(?:minimal|low|medium|high|xhigh|max)\z/
+                    : qr/\A(?:low|medium|high|xhigh|max)\z/;
+                die "config agents.$name.effort is unsupported\n"
+                    unless $profile->{effort} =~ $allowed;
+            }
+            if (exists $profile->{add_dirs}) {
+                my $dirs = $profile->{add_dirs};
+                die "config agents.$name.add_dirs must be a list of directories\n"
+                    unless ref($dirs) eq 'ARRAY'
+                        && !grep { ref || !defined || !length } @$dirs;
+                $profile->{add_dirs} = [map {
+                    File::Spec->rel2abs($_, $base)
+                } @$dirs];
+            }
+            # A bare program name is searched on PATH. An explicit relative
+            # path belongs to the config file, as custom commands do.
+            if (defined $profile->{executable}
+                && $profile->{executable} =~ m{[/\\]}) {
+                $profile->{executable} = File::Spec->rel2abs(
+                    $profile->{executable}, $base);
+            }
+        }
         if (exists $profile->{attempts}) {
             die "config agents.$name.attempts must be a non-negative integer\n"
                 unless $profile->{attempts} =~ /\A\d+\z/;

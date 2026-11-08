@@ -399,4 +399,92 @@ ok(!close $pipe, 'slow repair command times out');
 ok(!-f File::Spec->catfile($prefix, qw(lib perl5 Example Slow.pm)),
    'timed-out repair did not install module');
 
+# Exercise the provider adapters through the real scheduler. The fake CLI
+# records its arguments, then delegates to the fixture repair implementation.
+# No provider account or paid call is involved in these tests.
+my $fake_cli = File::Spec->catfile($root, 'provider cli');
+open my $fake_file, '>', $fake_cli or die $!;
+print {$fake_file} "#!$^X\n";
+print {$fake_file} <<'PROVIDER';
+use strict;
+use warnings;
+use Cwd qw(getcwd);
+use JSON::PP;
+open my $out, '>', $ENV{XPERL_TEST_PROVIDER_ARGS} or die $!;
+print {$out} JSON::PP->new->encode({ args => \@ARGV, cwd => getcwd() });
+close $out or die $!;
+my ($path) = $ARGV[-1] =~ /request at\n(".*")\./;
+die 'missing request in shared prompt' unless defined $path;
+my $request = JSON::PP->new->allow_nonref->decode($path);
+exec { $^X } $^X, $ENV{XPERL_TEST_CUSTOM_AGENT}, $request or die $!;
+PROVIDER
+close $fake_file or die $!;
+chmod 0755, $fake_cli or die $!;
+
+local $ENV{XPERL_TEST_CUSTOM_AGENT} = $agent;
+local $ENV{XPERL_TEST_PROVIDER_ARGS} = File::Spec->catfile($root, 'provider.json');
+for my $provider (qw(codex claude)) {
+    my $profile_path = File::Spec->catfile($root, "$provider.toml");
+    open my $profile_file, '>', $profile_path or die $!;
+    print {$profile_file} "schema = 1\n[agents.$provider]\n",
+        "executable = '$fake_cli'\nmodel = 'fixture-model'\neffort = 'high'\n";
+    close $profile_file or die $!;
+    my $provider_work = File::Spec->catdir($root, "$provider-work");
+    open $pipe, '-|', $^X, $script, 'install', '--config', $profile_path,
+        '--agent', $provider, '--mirror', $mirror, '--cache', $cache,
+        '--prefix', File::Spec->catdir($root, "$provider-prefix"),
+        '--workdir', $provider_work, '--registry', $registry,
+        '--repair-interval', '0', 'Example::Unfixable' or die $!;
+    # Unfixable deliberately leaves source unchanged, exercising the common
+    # no-progress guard with the provider command rather than a wrapper.
+    my $provider_output = do { local $/; <$pipe> };
+    ok(!close $pipe, "$provider stops after a source-free repair");
+    like($provider_output, qr/repair made no source changes/,
+         "$provider uses the installer's no-progress guard");
+    open my $args_file, '<', $ENV{XPERL_TEST_PROVIDER_ARGS} or die $!;
+    my $invocation = JSON::PP->new->decode(do { local $/; <$args_file> });
+    close $args_file or die $!;
+    ok(grep($_ eq 'fixture-model', @{$invocation->{args}}),
+       "$provider uses the configured model");
+
+    # A separate pristine prefix and registry force a genuine repair, then
+    # demonstrate that its registered patch installs without an agent.
+    my $provider_registry = File::Spec->catdir($root, "$provider-registry");
+    make_path($provider_registry);
+    open $pipe, '-|', $^X, $script, 'install', '--config', $profile_path,
+        '--agent', $provider, '--mirror', $mirror, '--cache', $cache,
+        '--prefix', File::Spec->catdir($root, "$provider-fixed-prefix"),
+        '--workdir', File::Spec->catdir($root, "$provider-fixed-work"),
+        '--registry', $provider_registry, '--repair-interval', '0',
+        'Example::Fixable' or die $!;
+    my $fixed_output = do { local $/; <$pipe> };
+    ok(close $pipe, "$provider repairs, tests and installs through the CLI");
+    my $fixed = JSON::PP->new->decode($fixed_output);
+    is($fixed->{status}, 'installed', "$provider repair succeeds");
+    open my $saved_request, '<', $ENV{XPERL_REPAIR_MARKER} or die $!;
+    my $provider_request = JSON::PP->new->decode(do { local $/; <$saved_request> });
+    close $saved_request or die $!;
+    is($provider_request->{agent}{provider}, $provider,
+       'the saved request identifies the selected adapter');
+    is($provider_request->{agent}{model}, 'fixture-model',
+       'the saved request identifies the model');
+
+    open $pipe, '-|', $^X, $script, 'install', '--mirror', $mirror,
+        '--cache', $cache, '--registry', $provider_registry,
+        '--prefix', File::Spec->catdir($root, "$provider-replay-prefix"),
+        'Example::Fixable' or die $!;
+    my $replayed_output = do { local $/; <$pipe> };
+    ok(close $pipe, "$provider repair is registered and replays without AI");
+    is(JSON::PP->new->decode($replayed_output)->{status}, 'installed',
+       'a fresh installation uses the reusable patch');
+
+    # Resuming uses the saved adapter and model even without the TOML file.
+    open $pipe, '-|', $^X, $script, 'install', '--resume', '--workdir',
+        File::Spec->catdir($root, "$provider-fixed-work") or die $!;
+    my $resumed_output = do { local $/; <$pipe> };
+    ok(close $pipe, "$provider session resumes without its original config");
+    is(JSON::PP->new->decode($resumed_output)->{status}, 'installed',
+       'resuming preserves a successful installation');
+}
+
 done_testing();

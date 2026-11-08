@@ -10,6 +10,7 @@ use File::Spec;
 use File::Temp qw(tempfile);
 use Getopt::Long qw(GetOptionsFromArray);
 use JSON::PP;
+use XPerl::Installer::Agent;
 use XPerl::Installer::Build;
 use XPerl::Installer::Config;
 use XPerl::Installer::Deps;
@@ -24,6 +25,7 @@ sub usage () {
     return <<'USAGE';
 Usage: xperl-install resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Name
        xperl-install fetch   [--config FILE] [--mirror URL|DIR] [--cache DIR] Module::Name
+       xperl-install stop --workdir DIR
        xperl-install install [--config FILE] [--prefix DIR] [--registry DIR]
                      [--from FILE] [--resume] [--action-shell]
                      [--agent NAME | --repair-command PATH]
@@ -75,7 +77,8 @@ USAGE
 
 my $action = shift @ARGV // 'help';
 my ($config_path, $agent, $mirror, $cache, $workdir, $refresh, $prefix,
-    $registry, $repair_command, $repair_attempts, $repair_timeout, $repair_limit,
+    $registry, $repair_command, $repair_agent,
+    $repair_attempts, $repair_timeout, $repair_limit,
     $repair_interval,
     $dry_run, $as_json, $resume, @only, @exclude, $jobs, $from, $phase_timeout,
     @native_prefixes, $no_native_prefix, $repair_jobs,
@@ -135,17 +138,9 @@ die "--jobs must be a positive integer\n" unless $jobs =~ /\A[1-9]\d*\z/;
 die "--repair-jobs must be a positive integer\n"
     unless $repair_jobs =~ /\A[1-9]\d*\z/;
 
-if (defined $agent) {
-    die "--agent and --repair-command cannot be combined\n"
-        if defined $repair_command;
-    my $profile = $settings->{agents}{$agent}
-        // die "unknown repair agent $agent in config\n";
-    $repair_command = $profile->{command};
-    $repair_attempts //= $profile->{attempts};
-    $repair_limit //= $profile->{limit};
-    $repair_interval //= $profile->{interval};
-    $repair_timeout //= $profile->{timeout};
-}
+die "--agent and --repair-command cannot be combined\n"
+    if defined($agent) && defined($repair_command);
+my $selected_command = $repair_command;
 
 my @modules = @ARGV;
 if (defined $from) {
@@ -167,15 +162,34 @@ if ($action eq 'install' && $resume) {
         unless ($saved->{schema} // '') eq '1'
             && ($saved->{xperl} // '') eq abs_path($^X)
             && ($saved->{xperl_version} // '') eq "$^V";
+    my $stop = File::Spec->catfile($workdir, 'stop-requested');
+    unlink $stop or die "cannot clear stop request $stop: $!\n" if -e $stop;
     @modules = @{$saved->{modules}};
     my $options = $saved->{options};
     ($prefix, $mirror, $cache, $registry, $jobs, $repair_jobs,
-     $repair_command, $repair_attempts, $repair_timeout, $repair_limit,
+     $repair_command, $repair_agent, $repair_attempts, $repair_timeout, $repair_limit,
      $repair_interval, $phase_timeout, $layout) =
         @{$options}{qw(prefix mirror cache registry jobs repair_jobs
-                      repair_command repair_attempts repair_timeout repair_limit
+                      repair_command repair_agent repair_attempts repair_timeout repair_limit
                       repair_interval phase_timeout layout)};
     @native_prefixes = @{$options->{native_prefixes}};
+}
+
+# An explicit selection replaces a resumed provider or temporary wrapper.
+# Otherwise a session keeps the adapter and settings it saved originally.
+if (defined $agent) {
+    my $profile = XPerl::Installer::Agent->profile(
+        $agent, $settings->{agents}{$agent});
+    $repair_command = $profile->{command};
+    $repair_agent = defined $repair_command ? undef : $profile;
+    $repair_attempts //= $profile->{attempts};
+    $repair_limit //= $profile->{limit};
+    $repair_interval //= $profile->{interval};
+    $repair_timeout //= $profile->{timeout};
+}
+elsif (defined $selected_command) {
+    $repair_command = $selected_command;
+    $repair_agent = undef;
 }
 die usage() if @modules > 1 && $action ne 'install';
 my $module = $modules[0];
@@ -194,6 +208,7 @@ sub builder ($ports) {
             $ENV{HOME} // File::Spec->tmpdir, '.xperl', 'cache'), 'work'),
         (defined $ports ? (registry => $ports) : ()),
         (defined $repair_command ? (repair_command => $repair_command) : ()),
+        (defined $repair_agent ? (repair_agent => $repair_agent) : ()),
         (defined $repair_attempts ? (repair_attempts => $repair_attempts) : ()),
         (defined $repair_limit ? (repair_limit => $repair_limit) : ()),
         (defined $repair_interval ? (repair_interval => $repair_interval) : ()),
@@ -219,6 +234,17 @@ sub open_action_shell ($actions, $workdir) {
 }
 
 dispatch ($action) {
+    on ('stop') {
+        die "stop requires --workdir and no module names\n"
+            unless defined($workdir) && !@modules && -d $workdir;
+        die "no install session found in $workdir\n"
+            unless -f File::Spec->catfile($workdir, 'install-session.json')
+                || -f File::Spec->catfile($workdir, 'install-ported', 'state.json');
+        my $stop = File::Spec->catfile($workdir, 'stop-requested');
+        open my $out, '>>', $stop or die "cannot request stop in $workdir: $!\n";
+        close $out or die "cannot close stop request $stop: $!\n";
+        print "Stop requested. Active work will finish; wait for the installer to exit.\n";
+    }
     on ('resolve') {
         die usage() unless defined $module;
         my $fetcher = XPerl::Installer::Fetch->new(
@@ -260,6 +286,7 @@ dispatch ($action) {
                 jobs => $jobs,
                 repair_jobs => $repair_jobs,
                 repair_command => $install_builder->{repair_command},
+                repair_agent => $install_builder->{repair_agent},
                 repair_attempts => $repair_attempts,
                 repair_timeout => $repair_timeout,
                 repair_limit => $repair_limit,
@@ -277,7 +304,7 @@ dispatch ($action) {
         # module is resolved once, shared prerequisites build once, and one
         # module's failure does not stop the rest.
         if ($jobs > 1 || @modules > 1 || defined $from || $resume
-            || $action_shell || $install_builder->{repair_command}) {
+            || $action_shell || $install_builder->repair_enabled) {
             my %seen;
             my @requested = grep { !$seen{$_}++ } @modules;
             my ($parallel, $result);
@@ -294,6 +321,7 @@ dispatch ($action) {
                 my @actions = map { { cpan_path => $_->{cpan_path},
                                       %{$_->{user_action}} } }
                               grep { $_->{user_action} } @{$result->{nodes}};
+                last if $result->{stopped};
                 last unless $action_shell && $pass == 1 && @actions;
                 open_action_shell(\@actions, $install_builder->{workdir});
             }
@@ -313,7 +341,8 @@ dispatch ($action) {
                     (defined $reason ? (reason => $reason) : ()),
                 };
             }
-            my $status = (grep { $_->{status} ne 'installed' } @outcomes)
+            my $status = $result->{stopped} ? 'stopped'
+                : (grep { $_->{status} ne 'installed' } @outcomes)
                 ? 'failed' : 'installed';
             print JSON::PP->new->canonical->pretty->encode({
                 (@outcomes == 1
@@ -325,7 +354,7 @@ dispatch ($action) {
                 user_actions => [map { { cpan_path => $_->{cpan_path},
                                          %{$_->{user_action}} } }
                                  grep { $_->{user_action} } @{$result->{nodes}}],
-                ($status eq 'failed'
+                ($status ne 'installed'
                     ? (resume => { workdir => $install_builder->{workdir},
                                    command => 'xperl-install install --resume --workdir '
                                        . $install_builder->{workdir} }) : ()),
@@ -334,12 +363,22 @@ dispatch ($action) {
                              @{$result->{nodes}}],
                 nodes => $result->{nodes},
             });
-            exit($status eq 'installed' ? 0 : 1);
+            exit($status eq 'installed' ? 0 : $status eq 'stopped' ? 2 : 1);
         }
         my $deps = XPerl::Installer::Deps->new(
             fetcher => fetcher(), builder => $install_builder);
-        print JSON::PP->new->canonical->pretty->encode(
-            $deps->install($module));
+        my $result = eval { $deps->install($module) };
+        if (!$result && "$@" =~ /\AXPERL_INSTALL_STOPPED/) {
+            print JSON::PP->new->canonical->pretty->encode({
+                module => $module, status => 'stopped', receipts => $deps->{receipts},
+                resume => { workdir => $install_builder->{workdir},
+                    command => 'xperl-install install --resume --workdir '
+                        . $install_builder->{workdir} },
+            });
+            exit 2;
+        }
+        die $@ unless $result;
+        print JSON::PP->new->canonical->pretty->encode($result);
     }
     on ('install-ported') {
         die usage() if defined $module || !defined $registry;
@@ -366,6 +405,7 @@ dispatch ($action) {
                 resume => $resume || $pass > 1,
                 progress => 1, jobs => $jobs,
                 repair_jobs => $repair_jobs);
+            last if $report->{stopped};
             last unless $action_shell && $pass == 1
                 && @{$report->{user_actions}};
             open_action_shell($report->{user_actions},
@@ -375,7 +415,8 @@ dispatch ($action) {
             ? JSON::PP->new->canonical->pretty->encode($report)
             : XPerl::Installer::Ported::summary($report)
               . "report: $report->{report}\n";
-        exit($report->{counts}{failed} || $report->{counts}{skipped} ? 1 : 0);
+        exit($report->{stopped} ? 2
+            : $report->{counts}{failed} || $report->{counts}{skipped} ? 1 : 0);
     }
     on ('scan-impact') {
         die usage() if defined $module || !@patterns;

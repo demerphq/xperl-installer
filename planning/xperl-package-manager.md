@@ -185,8 +185,9 @@ the registry mandatory for ordinary installations.
   installer owns build and test decisions; it does not embed a particular
   provider or accept an agent's assertion of success without rerunning checks.
   Codex, Claude, and other agents must use the same repair request and result
-  contract. Provider-specific invocation and credentials stay in external
-  wrappers, so switching agents requires no installer or registry change.
+  contract. Built-in adapters provide invocation and shared instructions for
+  Codex and Claude Code. Credentials stay with each provider's CLI. Custom
+  commands support tools without a built-in adapter.
 - Treat registry entries and agent edits as untrusted inputs. Validate archive
   paths, patch paths, hashes, and version applicability before use. Never run
   release-provided build scripts before the user has requested installation.
@@ -305,7 +306,7 @@ Agent assistance is opt-in and starts only after a build or test failure.
 Give the agent the original release identity, working tree, failed command,
 logs, XPerl version and configuration, active patches, and relevant recipes.
 During bootstrap development, the agent may fix the defective layer: the
-distribution, installer, registry, or an available XPerl checkout. Its wrapper
+distribution, installer, registry, or an available XPerl checkout. Its adapter
 must not impose a distribution-only editing rule. Bound retries and elapsed
 time to prevent a stuck repair loop, and retain all attempts and results.
 The installer reruns configuration, build, and tests after distribution edits.
@@ -341,9 +342,9 @@ than use a feature solely to demonstrate its syntax.
 
 The installed XPerl now bundles TOML::Tiny 0.22, so the standalone installer
 can read a TOML config without bootstrapping a parser from CPAN. The config
-holds installation defaults and named external repair commands. Selecting an
-agent remains explicit for each installation; Codex, Claude, and other
-wrappers all use the same repair protocol. TOML date and time values remain
+holds installation defaults and named agent profiles. Selecting an
+agent remains explicit for each installation. Built-in Codex and Claude
+adapters and custom commands use the same repair protocol. TOML date and time values remain
 strings by default, and the installer does not require DateTime modules.
 
 ## Delivery stages

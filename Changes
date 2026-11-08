@@ -1,4 +1,10 @@
 Unreleased
+    Add stop --workdir DIR to drain active builds and repair workers without
+    starting queued work. Save stopped results and continue with --resume.
+    Provide built-in Codex and Claude Code repair adapters and shared repair
+    instructions. --agent codex and --agent claude need no wrapper script.
+    TOML profiles select models, effort and executables. Saved sessions keep
+    the provider configuration and allow an explicit selection on resume.
     Register successful AI repairs automatically in a writable ports
     registry. Keep exact release selectors, patch digests, recipe links,
     and portable evidence. Exact-release validation now accepts distributions

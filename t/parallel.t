@@ -13,6 +13,7 @@ use IO::Compress::Gzip qw(gzip $GzipError);
 use JSON::PP;
 use List::Util qw(max);
 use Test::More;
+use Time::HiRes qw(sleep time);
 
 # Parallel installation against a local CPAN mirror.
 
@@ -425,5 +426,76 @@ is(scalar(grep { $_->{status} eq 'installed' } @limited), 1,
 my ($unrepaired) = grep { $_->{status} eq 'failed' } @limited;
 like($unrepaired->{reason}, qr/repair limit reached/,
      'the other failure reports the exhausted repair budget');
+
+# A stop request drains the active build or repair and leaves the rest for
+# resume. Wait for an observable phase rather than guessing startup timing.
+sub stop_during ($label, $started, @options) {
+    my $work = File::Spec->catdir($root, "$label-work");
+    my $prefix = File::Spec->catdir($root, "$label-prefix");
+    my $output = File::Spec->catfile($root, "$label.json");
+    my $pid = fork;
+    die "cannot fork: $!" unless defined $pid;
+    if (!$pid) {
+        open STDOUT, '>', $output or die $!;
+        exec { $^X } $^X, $script, 'install', '--mirror', $mirror,
+            '--cache', $cache, '--prefix', $prefix, '--workdir', $work,
+            @options or die $!;
+    }
+    my $deadline = time + 30;
+    my $ready;
+    while (time < $deadline) {
+        $ready = $started->($work);
+        last if $ready;
+        sleep 0.02;
+    }
+    ok($ready, "$label reaches the phase being stopped");
+    is(system($^X, $script, 'stop', '--workdir', $work), 0,
+       "$label accepts a stop request");
+    waitpid $pid, 0;
+    is($? >> 8, 2, "$label returns the stopped exit status");
+    open my $input, '<', $output or die $!;
+    my $result = JSON::PP->new->decode(do { local $/; <$input> });
+    close $input or die $!;
+    is($result->{status}, 'stopped', "$label reports a graceful stop");
+    return ($result, $prefix, $work);
+}
+
+for my $jobs (1, 2) {
+    my ($stopped, $prefix, $work) = stop_during("stop-build-$jobs", sub ($work) {
+        my $found;
+        find({ no_chdir => 1, wanted => sub {
+            $found = 1 if /test-1\.log\z/;
+        } }, $work) if -d $work;
+        return $found;
+    }, '--jobs', $jobs, 'Example::Pair');
+    ok(!-f File::Spec->catfile($prefix, qw(lib perl5 Example Pair.pm)),
+       'the dependent does not start after a stop request');
+    my @completed = grep { $_->{status} eq 'installed' } receipts($work);
+    ok(@completed, 'an active distribution finishes before shutdown');
+
+    open my $pipe, '-|', $^X, $script, 'install', '--resume', '--workdir', $work
+        or die $!;
+    my $output = do { local $/; <$pipe> };
+    ok(close $pipe, "the stopped $jobs-worker session resumes");
+    is(JSON::PP->new->decode($output)->{status}, 'installed',
+       'resume finishes the original request');
+}
+
+my $stop_events = File::Spec->catfile($root, 'stop-repair-events');
+{
+    local $ENV{XPERL_REPAIR_EVENTS} = $stop_events;
+    my ($stopped, $prefix, $work) = stop_during('stop-repair', sub ($work) {
+        return -s $stop_events;
+    }, '--jobs', 2, '--repair-jobs', 1, '--repair-attempts', 1,
+       '--repair-interval', 0, '--repair-command', $agent,
+       qw(Example::Bad Example::BadTwo));
+    my @repaired = grep { phase($_, 'repair') } receipts($work);
+    is(scalar @repaired, 1, 'shutdown starts no second repair worker');
+    is($repaired[0]{status}, 'installed', 'the active repair finishes and installs');
+    open my $input, '<', $stop_events or die $!;
+    my $events = do { local $/; <$input> };
+    close $input or die $!;
+    like($events, qr/ end /, 'the repair subprocess exits normally');
+}
 
 done_testing();

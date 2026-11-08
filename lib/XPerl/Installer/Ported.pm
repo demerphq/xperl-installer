@@ -182,6 +182,10 @@ sub run ($class, %args) {
     }
     $state //= { schema => 1, %$identity, entries => {}, built => {} };
     make_path($dir);
+    my $stop_path = File::Spec->catfile($workdir, 'stop-requested');
+    unlink $stop_path or die "cannot clear stop request $stop_path: $!\n"
+        if $args{resume} && -e $stop_path;
+    _write_json($state_path, $state) unless -f $state_path;
 
     my %selected = map { $_->{key} => $_ } @{$selection->{entries}};
     my $deps;
@@ -201,17 +205,27 @@ sub run ($class, %args) {
     my $started = time;
     my @results;
     my @actions;
+    my $stopped = 0;
     my $total = @{$selection->{entries}};
     my $number = 0;
     if (($args{jobs} // 1) > 1) {
         @results = _run_parallel($fetcher, $builder, $selection, $state,
                                  $state_path, $deps->{prefer}, %args,
-                                 action_queue => \@actions);
+                                 action_queue => \@actions, stopped => \$stopped);
     }
     else { for my $entry (@{$selection->{entries}}) {
         ++$number;
-        my $result = _run_entry($deps, $fetcher, $entry,
-                                $state->{entries}{$entry->{key}});
+        my $result;
+        if (-f $stop_path) {
+            $stopped = 1;
+            $result = { _entry_fields($entry), status => 'skipped',
+                        reason => 'stop requested' };
+        }
+        else {
+            $result = _run_entry($deps, $fetcher, $entry,
+                                 $state->{entries}{$entry->{key}});
+            $stopped = 1 if -f $stop_path;
+        }
         push @results, $result;
         printf STDERR "[%*d/%d] %-9s %s %s%s\n", length($total), $number,
             $total, $result->{status}, $entry->{key}, $entry->{version},
@@ -227,6 +241,7 @@ sub run ($class, %args) {
     ++$counts{$_->{status}} for @results;
     my $report = {
         schema => 1,
+        stopped => $stopped ? JSON::PP::true : JSON::PP::false,
         started => strftime('%Y-%m-%dT%H:%M:%SZ', gmtime $started),
         finished => strftime('%Y-%m-%dT%H:%M:%SZ', gmtime),
         platform => XPerl::Installer::Platform::current(),
@@ -300,6 +315,7 @@ sub _run_parallel ($fetcher, $builder, $selection, $state, $state_path,
         push @build, [$entry, $release];
     }
     my $run = $parallel->run(map { { release => $_->[1] } } @build);
+    ${$args{stopped}} = 1 if $run->{stopped};
     push @{$args{action_queue}},
         map { { cpan_path => $_->{cpan_path}, %{$_->{user_action}} } }
         grep { $_->{user_action} } @{$run->{nodes}};
@@ -309,14 +325,17 @@ sub _run_parallel ($fetcher, $builder, $selection, $state, $state_path,
         my %result = _entry_fields($entry);
         my $node = defined $request->{node} ? $parallel->node($request->{node}) : undef;
         if (!$node) {
-            $results{$entry->{key}} = { %result, status => 'failed',
+            $results{$entry->{key}} = { %result,
+                status => $run->{stopped} ? 'skipped' : 'failed',
                 reason => $request->{error} // 'not scheduled' };
             next;
         }
         my $receipt = $node->{receipt};
         $results{$entry->{key}} = {
             %result,
-            status => $node->{state} eq 'installed' ? 'installed' : 'failed',
+            status => $node->{state} eq 'installed' ? 'installed'
+                : $run->{stopped} && $node->{state} !~ /\A(?:failed|blocked)\z/
+                ? 'skipped' : 'failed',
             ($node->{reason} ? (reason => $node->{reason}) : ()),
             ($receipt ? (receipt => $receipt, _receipt_details($receipt)) : ()),
             dependency_receipts => [],
@@ -399,6 +418,8 @@ sub _run_entry ($deps, $fetcher, $entry, $previous) {
     if ($ok) {
         return { %result, status => 'installed', _receipt_details($receipt) };
     }
+    return { %result, status => 'skipped', reason => 'stop requested' }
+        if "$error" =~ /\AXPERL_INSTALL_STOPPED/;
     (my $reason = $error) =~ s/\s*\n receipt: .*//s;
     $reason = (split /\n/, $reason)[0];
     return { %result, status => 'failed', reason => $reason,
@@ -469,6 +490,8 @@ sub summary ($report) {
         "workdir: $report->{workdir}",
     );
     my $excluded = scalar @{$report->{excluded} // []};
+    push @lines, 'stopped: rerun the same command with --resume'
+        if $report->{stopped};
     push @lines, "excluded: $excluded "
         . ($excluded == 1 ? 'entry' : 'entries') . ' (listed in report.json)'
         if $excluded;
