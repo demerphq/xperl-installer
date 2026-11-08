@@ -26,15 +26,20 @@ upstream_of() {
     git -C "$1" rev-parse --abbrev-ref "$2@{upstream}" 2>/dev/null || printf '%s' "$2"
 }
 
-# the XPerl core branch to report: XPW_XPERL_REMOTE/xperl/main when that
-# remote is set (e.g. dmq where origin is upstream Perl), else the configured
-# upstream of the local xperl/main
+# the XPerl core branch tracked by the local xperl/main, from its git config
+# (branch.xperl/main.remote and .merge), e.g. dmq/xperl/main where origin is
+# upstream Perl. no remote is guessed: without that config this fails with
+# the command that sets it.
 core_ref() {
-    if [[ -n ${XPW_XPERL_REMOTE:-} ]]; then
-        printf '%s/xperl/main' "$XPW_XPERL_REMOTE"
-    else
-        upstream_of "$WS/xperl" xperl/main
+    local remote merge
+    remote=$(git -C "$WS/xperl" config --get branch.xperl/main.remote || true)
+    merge=$(git -C "$WS/xperl" config --get branch.xperl/main.merge || true)
+    if [[ -z $remote || -z $merge ]]; then
+        say "xperl/main has no configured upstream in $WS/xperl; set it with:"
+        say "  git -C $WS/xperl branch --set-upstream-to=REMOTE/xperl/main xperl/main"
+        return 1
     fi
+    printf '%s/%s' "$remote" "${merge#refs/heads/}"
 }
 
 # clean environment: no ~/bin (its `t` is moreutils ts and hangs tests), no
@@ -112,9 +117,6 @@ settings (environment)
   XPW_WS              umbrella workspace (default: two levels above this
                       script, i.e. the directory holding xperl-installer)
   XPW_PERL_PREFIX     xperl install prefix (default: perlbrew perls/xperl)
-  XPW_XPERL_REMOTE    git remote holding XPerl in WS/xperl, for info (default:
-                      the configured upstream of xperl/main; set e.g. dmq
-                      where origin is upstream Perl)
   XPW_P544            perl 5.44 control install (default: ~/perl-5.44.0)
   XPW_CACHE           download cache (default: the installer's ~/.xperl/cache)
   XPW_REGISTRY        ports checkout (default: WS/xperl-cpan-ports)
@@ -136,7 +138,7 @@ cmd_info() {
     for r in xperl:xperl/main xperl-installer:main xperl-cpan-ports:main; do
         repo=$WS/${r%%:*} main=${r#*:}
         [[ -d $repo ]] || { printf '%-17s missing\n' "${r%%:*}"; continue; }
-        if [[ ${r%%:*} == xperl ]]; then up=$(core_ref); else up=$(upstream_of "$repo" "$main"); fi
+        if [[ ${r%%:*} == xperl ]]; then up=$(core_ref) || up="(no upstream)"; else up=$(upstream_of "$repo" "$main"); fi
         printf '%-17s HEAD %s (%s)\n' "${r%%:*}" \
             "$(git -C "$repo" log -1 --format='%h %s' HEAD)" \
             "$(git -C "$repo" branch --show-current || true)"
