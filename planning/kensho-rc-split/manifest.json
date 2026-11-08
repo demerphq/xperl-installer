@@ -1,0 +1,1442 @@
+{
+   "cpan_index_sha256" : "18eabe8642a00402c2f242058ccc9a9607c46e45e146d7a15c1bea714921faa8",
+   "distribution_counts" : {
+      "claude" : 69,
+      "codex" : 68
+   },
+   "schema" : 1,
+   "scope" : "Declared task targets, not the transitive configured build graph",
+   "targets" : [
+      {
+         "cpan_path" : "A/AB/ABRAXXA/Catalyst-Authentication-Credential-HTTP-1.019.tar.gz",
+         "module" : "Catalyst::Authentication::Credential::HTTP",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "A/AB/ABRAXXA/CatalystX-SimpleLogin-0.21.tar.gz",
+         "module" : "CatalystX::SimpleLogin",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "A/AB/ABRAXXA/HTML-FormHandler-0.410002.tar.gz",
+         "module" : "HTML::FormHandler",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::WebDev"
+         ]
+      },
+      {
+         "cpan_path" : "A/AR/ARODLAND/Catalyst-Plugin-Session-Store-DBIC-0.15.tar.gz",
+         "module" : "Catalyst::Plugin::Session::Store::DBIC",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "A/AR/ARODLAND/FCGI-ProcManager-0.28.tar.gz",
+         "module" : "FCGI::ProcManager",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "A/AS/ASB/CHI-0.61.tar.gz",
+         "module" : "CHI",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Scalability"
+         ]
+      },
+      {
+         "cpan_path" : "A/AS/ASH/WWW-Mechanize-TreeBuilder-1.20000.tar.gz",
+         "module" : "WWW::Mechanize::TreeBuilder",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::WebCrawling"
+         ]
+      },
+      {
+         "cpan_path" : "B/BI/BINGOS/Module-CoreList-5.20261022.tar.gz",
+         "module" : "Module::CoreList",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::CLI"
+         ]
+      },
+      {
+         "cpan_path" : "B/BI/BINGOS/POE-1.370.tar.gz",
+         "module" : "POE",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Async"
+         ]
+      },
+      {
+         "cpan_path" : "B/BO/BOBTFISH/Catalyst-ActionRole-ACL-0.07.tar.gz",
+         "module" : "Catalyst::ActionRole::ACL",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "B/BO/BOBTFISH/Catalyst-Model-Adaptor-0.10.tar.gz",
+         "module" : "Catalyst::Model::Adaptor",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "B/BO/BOBTFISH/Catalyst-Plugin-I18N-0.10.tar.gz",
+         "module" : "Catalyst::Plugin::I18N",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "B/BO/BOBTFISH/Catalyst-Plugin-StackTrace-0.12.tar.gz",
+         "module" : "Catalyst::Plugin::StackTrace",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "B/BP/BPS/Time-ParseDate-2026.033.tar.gz",
+         "module" : "Time::ParseDate",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Dates"
+         ]
+      },
+      {
+         "cpan_path" : "C/CH/CHANSEN/Time-Moment-0.46.tar.gz",
+         "module" : "Time::Moment",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Dates"
+         ]
+      },
+      {
+         "cpan_path" : "C/CH/CHROMATIC/Modern-Perl-1.20250607.tar.gz",
+         "module" : "Modern::Perl",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::ModuleDev"
+         ]
+      },
+      {
+         "cpan_path" : "C/CR/CROMEDOME/Dancer2-2.3.0.tar.gz",
+         "module" : "Dancer2",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::WebDev"
+         ]
+      },
+      {
+         "cpan_path" : "D/DA/DAMS/Redis-2.000.tar.gz",
+         "module" : "Redis",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Scalability"
+         ]
+      },
+      {
+         "cpan_path" : "D/DH/DHOSS/Catalyst-View-Email-0.36.tar.gz",
+         "module" : "Catalyst::View::Email",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "D/DO/DOY/MooseX-Aliases-0.11.tar.gz",
+         "module" : "MooseX::Aliases",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::OOP"
+         ]
+      },
+      {
+         "cpan_path" : "D/DO/DOY/Reply-0.42.tar.gz",
+         "module" : "Reply",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::CLI"
+         ]
+      },
+      {
+         "cpan_path" : "D/DR/DROLSKY/Code-TidyAll-0.85.tar.gz",
+         "module" : "Code::TidyAll",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::ModuleDev"
+         ]
+      },
+      {
+         "cpan_path" : "D/DR/DROLSKY/DateTime-1.68.tar.gz",
+         "module" : "DateTime",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Dates"
+         ]
+      },
+      {
+         "cpan_path" : "D/DR/DROLSKY/Log-Dispatch-2.71.tar.gz",
+         "module" : "Log::Dispatch",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Logging"
+         ]
+      },
+      {
+         "cpan_path" : "D/DR/DROLSKY/MooseX-StrictConstructor-0.21.tar.gz",
+         "module" : "MooseX::StrictConstructor",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::OOP"
+         ]
+      },
+      {
+         "cpan_path" : "E/ES/ESAYM/Time-Piece-1.41.tar.gz",
+         "module" : "Time::Piece",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Dates"
+         ]
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/App-Nopaste-1.013.tar.gz",
+         "module" : "App::Nopaste",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::CLI"
+         ]
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Catalyst-Action-REST-1.22.tar.gz",
+         "module" : "Catalyst::Action::REST",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Catalyst-Controller-ActionRole-0.17.tar.gz",
+         "module" : "Catalyst::Controller::ActionRole",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Catalyst-Manual-5.9013.tar.gz",
+         "module" : "Catalyst::Manual",
+         "owner" : "claude",
+         "requirement" : "5.80",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Catalyst-Plugin-Authentication-0.10029.tar.gz",
+         "module" : "Catalyst::Plugin::Authentication",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Catalyst-Plugin-Static-Simple-0.38.tar.gz",
+         "module" : "Catalyst::Plugin::Static::Simple",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Data-Dumper-Concise-2.023.tar.gz",
+         "module" : "Devel::Dwarn",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::ModuleDev"
+         ]
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/FCGI-0.82.tar.gz",
+         "module" : "FCGI",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/JSON-MaybeXS-1.004008.tar.gz",
+         "module" : "JSON::MaybeXS",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Config"
+         ]
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Moose-2.4001.tar.gz",
+         "module" : "Moose",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::OOP"
+         ]
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/MooseX-Getopt-0.78.tar.gz",
+         "module" : "MooseX::Getopt",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::OOP"
+         ]
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/MooseX-Role-Parameterized-1.11.tar.gz",
+         "module" : "MooseX::Role::Parameterized",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::OOP"
+         ]
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/MooseX-SimpleConfig-0.11.tar.gz",
+         "module" : "MooseX::SimpleConfig",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::OOP"
+         ]
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Test-Pod-1.52.tar.gz",
+         "module" : "Test::Pod",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Testing"
+         ]
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Test-Warnings-0.038.tar.gz",
+         "module" : "Test::Warnings",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Testing"
+         ]
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Try-Tiny-0.32.tar.gz",
+         "module" : "Try::Tiny",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Exceptions"
+         ]
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Web-Simple-0.036.tar.gz",
+         "module" : "Web::Simple",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::WebDev"
+         ]
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/namespace-autoclean-0.31.tar.gz",
+         "module" : "namespace::autoclean",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::OOP"
+         ]
+      },
+      {
+         "cpan_path" : "E/EV/EVDB/CGI-FormBuilder-Source-Perl-0.01.tar.gz",
+         "module" : "CGI::FormBuilder::Source::Perl",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::WebDev"
+         ]
+      },
+      {
+         "cpan_path" : "E/EV/EVDB/Term-ProgressBar-Simple-0.03.tar.gz",
+         "module" : "Term::ProgressBar::Simple",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Hackery"
+         ]
+      },
+      {
+         "cpan_path" : "E/EX/EXODIST/Test-Simple-1.302226.tar.gz",
+         "module" : "Test2::Suite",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Testing"
+         ]
+      },
+      {
+         "cpan_path" : "E/EX/EXODIST/Test-Simple-1.302226.tar.gz",
+         "module" : "Test::Simple",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Testing"
+         ]
+      },
+      {
+         "cpan_path" : "F/FL/FLORA/Catalyst-Plugin-Session-Store-File-0.18.tar.gz",
+         "module" : "Catalyst::Plugin::Session::Store::File",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "F/FL/FLORA/CatalystX-LeakChecker-0.06.tar.gz",
+         "module" : "CatalystX::LeakChecker",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "F/FL/FLORA/CatalystX-REPL-0.04.tar.gz",
+         "module" : "CatalystX::REPL",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "F/FR/FREW/IO-All-0.87.tar.gz",
+         "module" : "IO::All",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Hackery"
+         ]
+      },
+      {
+         "cpan_path" : "G/GA/GARU/Data-Printer-1.002001.tar.gz",
+         "module" : "Data::Printer",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::ModuleDev"
+         ]
+      },
+      {
+         "cpan_path" : "G/GR/GRANTM/XML-SAX-1.02.tar.gz",
+         "module" : "XML::SAX",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::XML"
+         ]
+      },
+      {
+         "cpan_path" : "G/GR/GRODITI/Catalyst-Component-InstancePerContext-0.001001.tar.gz",
+         "module" : "Catalyst::Component::InstancePerContext",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "G/GU/GUGOD/App-perlbrew-1.02.tar.gz",
+         "module" : "App::perlbrew",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Toolchain"
+         ]
+      },
+      {
+         "cpan_path" : "G/GW/GWILLIAMS/Attean-0.040.tar.gz",
+         "module" : "Attean",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::WebDev"
+         ]
+      },
+      {
+         "cpan_path" : "H/HA/HAARG/Catalyst-Devel-1.42.tar.gz",
+         "module" : "Catalyst::Devel",
+         "owner" : "codex",
+         "requirement" : "1.26",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "H/HA/HAARG/Catalyst-Model-DBIC-Schema-0.66.tar.gz",
+         "module" : "Catalyst::Model::DBIC::Schema",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "H/HA/HAARG/Catalyst-Plugin-ConfigLoader-0.35.tar.gz",
+         "module" : "Catalyst::Plugin::ConfigLoader",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "H/HA/HAARG/Catalyst-Plugin-Session-0.44.tar.gz",
+         "module" : "Catalyst::Plugin::Session",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "H/HA/HAARG/Catalyst-Plugin-Session-State-Cookie-0.18.tar.gz",
+         "module" : "Catalyst::Plugin::Session::State::Cookie",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "H/HA/HAARG/Config-Any-0.33.tar.gz",
+         "module" : "Config::Any",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Config"
+         ]
+      },
+      {
+         "cpan_path" : "H/HA/HAARG/Devel-Confess-0.009004.tar.gz",
+         "module" : "Devel::Confess",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::ModuleDev"
+         ]
+      },
+      {
+         "cpan_path" : "H/HA/HAARG/HTTP-Tiny-0.096.tar.gz",
+         "module" : "HTTP::Tiny",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::WebCrawling"
+         ]
+      },
+      {
+         "cpan_path" : "H/HA/HAARG/Log-Contextual-0.009001.tar.gz",
+         "module" : "Log::Contextual",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Logging"
+         ]
+      },
+      {
+         "cpan_path" : "H/HA/HAARG/Moo-2.005005.tar.gz",
+         "module" : "Moo",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::OOP"
+         ]
+      },
+      {
+         "cpan_path" : "H/HA/HAARG/local-lib-2.000029.tar.gz",
+         "module" : "local::lib",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst",
+            "Task::Kensho::Toolchain"
+         ]
+      },
+      {
+         "cpan_path" : "H/HM/HMBRAND/DBI-1.656.tgz",
+         "module" : "DBI",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::DBDev"
+         ]
+      },
+      {
+         "cpan_path" : "H/HM/HMBRAND/Spreadsheet-Read-0.95.tgz",
+         "module" : "Spreadsheet::Read",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::ExcelCSV"
+         ]
+      },
+      {
+         "cpan_path" : "H/HM/HMBRAND/Text-CSV_XS-1.65.tgz",
+         "module" : "Text::CSV_XS",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::ExcelCSV"
+         ]
+      },
+      {
+         "cpan_path" : "I/IL/ILMARI/Catalyst-Authentication-Store-DBIx-Class-0.1506.tar.gz",
+         "module" : "Catalyst::Authentication::Store::DBIx::Class",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "I/IS/ISHIGAKI/DBD-SQLite-1.78.tar.gz",
+         "module" : "DBD::SQLite",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::DBDev"
+         ]
+      },
+      {
+         "cpan_path" : "J/JJ/JJNAPIORK/Catalyst-Runtime-5.90132.tar.gz",
+         "module" : "Catalyst",
+         "owner" : "codex",
+         "requirement" : "5.80",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "J/JJ/JJNAPIORK/Catalyst-Runtime-5.90132.tar.gz",
+         "module" : "Catalyst::Plugin::Unicode::Encoding",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "J/JJ/JJNAPIORK/Catalyst-View-TT-0.46.tar.gz",
+         "module" : "Catalyst::View::TT",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "J/JJ/JJNAPIORK/CatalystX-Profile-0.02.tar.gz",
+         "module" : "CatalystX::Profile",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "J/JK/JKEENAN/Devel-NYTProf-6.16.tar.gz",
+         "module" : "Devel::NYTProf",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::ModuleDev"
+         ]
+      },
+      {
+         "cpan_path" : "J/JM/JMCNAMARA/Excel-Writer-XLSX-1.15.tar.gz",
+         "module" : "Excel::Writer::XLSX",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::ExcelCSV"
+         ]
+      },
+      {
+         "cpan_path" : "K/KH/KHAMPTON/XML-Generator-PerlData-0.95.tar.gz",
+         "module" : "XML::Generator::PerlData",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::XML"
+         ]
+      },
+      {
+         "cpan_path" : "L/LE/LEONT/Module-Build-Tiny-0.053.tar.gz",
+         "module" : "Module::Build::Tiny",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::ModuleDev"
+         ]
+      },
+      {
+         "cpan_path" : "L/LE/LEONT/Software-License-0.104007.tar.gz",
+         "module" : "Software::License",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::ModuleDev"
+         ]
+      },
+      {
+         "cpan_path" : "M/MA/MARIOROY/MCE-1.904.tar.gz",
+         "module" : "MCE",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Async"
+         ]
+      },
+      {
+         "cpan_path" : "M/MA/MARKOV/MIME-Types-2.30.tar.gz",
+         "module" : "MIME::Types",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::WebDev"
+         ]
+      },
+      {
+         "cpan_path" : "M/MA/MATTP/Test-WWW-Selenium-1.36.tar.gz",
+         "module" : "WWW::Selenium",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::WebCrawling"
+         ]
+      },
+      {
+         "cpan_path" : "M/MI/MIYAGAWA/App-cpanminus-1.7049.tar.gz",
+         "module" : "App::cpanminus",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Toolchain"
+         ]
+      },
+      {
+         "cpan_path" : "M/MI/MIYAGAWA/Carton-v1.0.35.tar.gz",
+         "module" : "Carton",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Toolchain"
+         ]
+      },
+      {
+         "cpan_path" : "M/MI/MIYAGAWA/Plack-1.0057.tar.gz",
+         "module" : "Plack",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::WebDev"
+         ]
+      },
+      {
+         "cpan_path" : "M/MI/MIYAGAWA/Starman-0.4019.tar.gz",
+         "module" : "Starman",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "M/MI/MIYAGAWA/XML-Atom-0.43.tar.gz",
+         "module" : "XML::Atom",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::WebDev"
+         ]
+      },
+      {
+         "cpan_path" : "M/MS/MSCHILLI/Log-Log4perl-1.58.tar.gz",
+         "module" : "Log::Log4perl",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Logging"
+         ]
+      },
+      {
+         "cpan_path" : "M/MS/MSTROUT/App-FatPacker-0.010008.tar.gz",
+         "module" : "App::FatPacker",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Toolchain"
+         ]
+      },
+      {
+         "cpan_path" : "M/MS/MSTROUT/Package-Variant-1.003002.tar.gz",
+         "module" : "Package::Variant",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::OOP"
+         ]
+      },
+      {
+         "cpan_path" : "M/MS/MSTROUT/Test-WWW-Mechanize-Catalyst-0.62.tar.gz",
+         "module" : "Test::WWW::Mechanize::Catalyst",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "N/NE/NEILB/Smart-Comments-1.06.tar.gz",
+         "module" : "Smart::Comments",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Hackery"
+         ]
+      },
+      {
+         "cpan_path" : "N/NE/NEILB/Test-Pod-Coverage-1.10.tar.gz",
+         "module" : "Test::Pod::Coverage",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Testing"
+         ]
+      },
+      {
+         "cpan_path" : "O/OA/OALDERS/HTTP-BrowserDetect-3.45.tar.gz",
+         "module" : "HTTP::BrowserDetect",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::WebDev"
+         ]
+      },
+      {
+         "cpan_path" : "O/OA/OALDERS/WWW-Mechanize-2.22.tar.gz",
+         "module" : "WWW::Mechanize",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::WebCrawling"
+         ]
+      },
+      {
+         "cpan_path" : "O/OA/OALDERS/libwww-perl-6.83.tar.gz",
+         "module" : "LWP::Simple",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::WebCrawling"
+         ]
+      },
+      {
+         "cpan_path" : "O/OA/OALDERS/libwww-perl-6.83.tar.gz",
+         "module" : "LWP::UserAgent",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::WebCrawling"
+         ]
+      },
+      {
+         "cpan_path" : "P/PE/PERIGRIN/HTTP-Thin-0.006.tar.gz",
+         "module" : "HTTP::Thin",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::WebCrawling"
+         ]
+      },
+      {
+         "cpan_path" : "P/PE/PERIGRIN/XML-SAX-Writer-0.57.tar.gz",
+         "module" : "XML::SAX::Writer",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::XML"
+         ]
+      },
+      {
+         "cpan_path" : "P/PE/PETDANCE/Perl-Critic-1.156.tar.gz",
+         "module" : "Perl::Critic",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::ModuleDev"
+         ]
+      },
+      {
+         "cpan_path" : "P/PE/PETDANCE/Test-Memory-Cycle-1.06.tar.gz",
+         "module" : "Test::Memory::Cycle",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Testing"
+         ]
+      },
+      {
+         "cpan_path" : "P/PE/PETDANCE/ack-v3.10.0.tar.gz",
+         "module" : "App::Ack",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::CLI"
+         ]
+      },
+      {
+         "cpan_path" : "P/PE/PEVANS/Future-0.54.tar.gz",
+         "module" : "Future",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Async"
+         ]
+      },
+      {
+         "cpan_path" : "P/PE/PEVANS/IO-Async-0.805.tar.gz",
+         "module" : "IO::Async",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Async"
+         ]
+      },
+      {
+         "cpan_path" : "P/PE/PEVANS/Syntax-Keyword-Try-0.31.tar.gz",
+         "module" : "Syntax::Keyword::Try",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Exceptions"
+         ]
+      },
+      {
+         "cpan_path" : "P/PJ/PJCJ/Devel-Cover-1.52.tar.gz",
+         "module" : "Devel::Cover",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Testing"
+         ]
+      },
+      {
+         "cpan_path" : "P/PL/PLICEASE/MooseX-NonMoose-0.27.tar.gz",
+         "module" : "MooseX::NonMoose",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::OOP"
+         ]
+      },
+      {
+         "cpan_path" : "P/PR/PREACTION/Log-Any-1.720.tar.gz",
+         "module" : "Log::Any",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Logging"
+         ]
+      },
+      {
+         "cpan_path" : "R/RI/RIBASUSHI/DBIx-Class-0.082844.tar.gz",
+         "module" : "DBIx::Class",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::DBDev"
+         ]
+      },
+      {
+         "cpan_path" : "R/RJ/RJBS/CPAN-Mini-1.111017.tar.gz",
+         "module" : "CPAN::Mini",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Toolchain"
+         ]
+      },
+      {
+         "cpan_path" : "R/RJ/RJBS/CPAN-Uploader-0.103019.tar.gz",
+         "module" : "CPAN::Uploader",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::ModuleDev"
+         ]
+      },
+      {
+         "cpan_path" : "R/RJ/RJBS/Dist-Zilla-6.040.tar.gz",
+         "module" : "Dist::Zilla",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::ModuleDev"
+         ]
+      },
+      {
+         "cpan_path" : "R/RJ/RJBS/Email-MIME-Kit-3.000008.tar.gz",
+         "module" : "Email::MIME::Kit",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Email"
+         ]
+      },
+      {
+         "cpan_path" : "R/RJ/RJBS/Email-Sender-2.603.tar.gz",
+         "module" : "Email::Sender",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Email"
+         ]
+      },
+      {
+         "cpan_path" : "R/RJ/RJBS/Email-Simple-2.218.tar.gz",
+         "module" : "Email::Simple",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Email"
+         ]
+      },
+      {
+         "cpan_path" : "R/RJ/RJBS/Email-Stuffer-0.020.tar.gz",
+         "module" : "Email::Stuffer",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Email"
+         ]
+      },
+      {
+         "cpan_path" : "R/RJ/RJBS/Email-Valid-1.204.tar.gz",
+         "module" : "Email::Valid",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Email"
+         ]
+      },
+      {
+         "cpan_path" : "R/RJ/RJBS/Test-Deep-1.205.tar.gz",
+         "module" : "Test::Deep",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Testing"
+         ]
+      },
+      {
+         "cpan_path" : "R/RJ/RJBS/Test-Fatal-0.019.tar.gz",
+         "module" : "Test::Fatal",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Testing"
+         ]
+      },
+      {
+         "cpan_path" : "R/RK/RKITOVER/CatalystX-Component-Traits-0.19.tar.gz",
+         "module" : "CatalystX::Component::Traits",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Catalyst"
+         ]
+      },
+      {
+         "cpan_path" : "R/RR/RRWO/Pod-Readme-v1.2.3.tar.gz",
+         "module" : "Pod::Readme",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::ModuleDev"
+         ]
+      },
+      {
+         "cpan_path" : "S/SH/SHANCOCK/Perl-Tidy-20260826.tar.gz",
+         "module" : "Perl::Tidy",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::ModuleDev"
+         ]
+      },
+      {
+         "cpan_path" : "S/SH/SHLOMIF/XML-LibXSLT-2.003000.tar.gz",
+         "module" : "XML::LibXSLT",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::XML"
+         ]
+      },
+      {
+         "cpan_path" : "S/SH/SHLOMIF/XML-RSS-1.65.tar.gz",
+         "module" : "XML::RSS",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::WebDev"
+         ]
+      },
+      {
+         "cpan_path" : "S/SK/SKAJI/App-cpm-v1.1.6.tar.gz",
+         "module" : "App::cpm",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Toolchain"
+         ]
+      },
+      {
+         "cpan_path" : "S/SR/SRI/Mojolicious-9.53.tar.gz",
+         "module" : "Mojo::IOLoop",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Async"
+         ]
+      },
+      {
+         "cpan_path" : "S/SR/SRI/Mojolicious-9.53.tar.gz",
+         "module" : "Mojo::UserAgent",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::WebCrawling"
+         ]
+      },
+      {
+         "cpan_path" : "S/SR/SRI/Mojolicious-9.53.tar.gz",
+         "module" : "Mojolicious",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::WebDev"
+         ]
+      },
+      {
+         "cpan_path" : "S/SR/SRI/Mojolicious-9.53.tar.gz",
+         "module" : "ojo",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Hackery"
+         ]
+      },
+      {
+         "cpan_path" : "T/TH/THALJEF/Pinto-0.14.tar.gz",
+         "module" : "Pinto",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Toolchain"
+         ]
+      },
+      {
+         "cpan_path" : "T/TL/TLINDEN/Config-General-2.67.tar.gz",
+         "module" : "Config::General",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Config"
+         ]
+      },
+      {
+         "cpan_path" : "T/TM/TMTM/Spreadsheet-WriteExcel-Simple-1.04.tar.gz",
+         "module" : "Spreadsheet::WriteExcel::Simple",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::ExcelCSV"
+         ]
+      },
+      {
+         "cpan_path" : "T/TO/TOBYINK/Type-Tiny-2.010001.tar.gz",
+         "module" : "Type::Tiny",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::OOP"
+         ]
+      },
+      {
+         "cpan_path" : "T/TO/TODDR/Template-Toolkit-3.106.tar.gz",
+         "module" : "Template",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::WebDev"
+         ]
+      },
+      {
+         "cpan_path" : "T/TO/TODDR/XML-LibXML-2.0213.tar.gz",
+         "module" : "XML::LibXML",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::XML"
+         ]
+      },
+      {
+         "cpan_path" : "T/TO/TODDR/autodie-2.37.tar.gz",
+         "module" : "autodie",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Exceptions"
+         ]
+      },
+      {
+         "cpan_path" : "T/TO/TOKUHIROM/Test-Requires-0.11.tar.gz",
+         "module" : "Test::Requires",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Testing"
+         ]
+      },
+      {
+         "cpan_path" : "V/VE/VEESH/DBIx-Class-Schema-Loader-0.07053.tar.gz",
+         "module" : "DBIx::Class::Schema::Loader",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::DBDev"
+         ]
+      },
+      {
+         "cpan_path" : "V/VE/VEESH/SQL-Translator-1.66.tar.gz",
+         "module" : "SQL::Translator",
+         "owner" : "codex",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::DBDev"
+         ]
+      },
+      {
+         "cpan_path" : "Y/YA/YANICK/Parallel-ForkManager-2.04.tar.gz",
+         "module" : "Parallel::ForkManager",
+         "owner" : "claude",
+         "requirement" : "0",
+         "tasks" : [
+            "Task::Kensho::Async"
+         ]
+      }
+   ],
+   "task" : "Task::Kensho",
+   "wrappers" : [
+      {
+         "cpan_path" : "E/ET/ETHER/Task-Kensho-0.41.tar.gz",
+         "dynamic_config" : 1,
+         "module" : "Task::Kensho",
+         "source_sha256" : "299b3c05abf0730609958c565d35e16b0601ea0f46c1992b93882706682b2fab",
+         "version" : "0.41"
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Task-Kensho-Async-0.41.tar.gz",
+         "dynamic_config" : 0,
+         "module" : "Task::Kensho::Async",
+         "source_sha256" : "ba912823b15c22e0b59b93c5d631ade37344f660d69c1226aecdd7828a40aeae",
+         "version" : "0.41"
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Task-Kensho-CLI-0.41.tar.gz",
+         "dynamic_config" : 0,
+         "module" : "Task::Kensho::CLI",
+         "source_sha256" : "ee6828959f12a95266aa40b31e2f90b9c28cb708c3d3012ccfd36ae71ced78f7",
+         "version" : "0.41"
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Task-Kensho-Config-0.41.tar.gz",
+         "dynamic_config" : 0,
+         "module" : "Task::Kensho::Config",
+         "source_sha256" : "9044ba317b8902d3b8a455b0e51658c0c9ce8730f9252d94e15daeb1922bed0c",
+         "version" : "0.41"
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Task-Kensho-DBDev-0.41.tar.gz",
+         "dynamic_config" : 0,
+         "module" : "Task::Kensho::DBDev",
+         "source_sha256" : "1817a596d2a7ed1983143b88faca8d4b8d310ad43d1bc064517f5014b653c753",
+         "version" : "0.41"
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Task-Kensho-Dates-0.41.tar.gz",
+         "dynamic_config" : 0,
+         "module" : "Task::Kensho::Dates",
+         "source_sha256" : "d32ee750caa520c311ed79c243bd81ec70604318283532d7ee375adedc7c48ac",
+         "version" : "0.41"
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Task-Kensho-Email-0.41.tar.gz",
+         "dynamic_config" : 0,
+         "module" : "Task::Kensho::Email",
+         "source_sha256" : "c0d34b1dd2f133a2b4018829ee1861e87571869b5a5eaabed494a99eaf03681b",
+         "version" : "0.41"
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Task-Kensho-ExcelCSV-0.41.tar.gz",
+         "dynamic_config" : 0,
+         "module" : "Task::Kensho::ExcelCSV",
+         "source_sha256" : "ae182588b3d7b43b5d2aa4822d6b4d5d3960453eac89976b7d63b8e9130611a2",
+         "version" : "0.41"
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Task-Kensho-Exceptions-0.41.tar.gz",
+         "dynamic_config" : 0,
+         "module" : "Task::Kensho::Exceptions",
+         "source_sha256" : "d5f3cff8526e110a7bb6daa2f3313f04d4c6ce55555d5a8513353cc10c106398",
+         "version" : "0.41"
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Task-Kensho-Hackery-0.41.tar.gz",
+         "dynamic_config" : 0,
+         "module" : "Task::Kensho::Hackery",
+         "source_sha256" : "4a0273de46fd44eafc562b952f876a0108811fa60a9d942d7eceb7c224d66cfb",
+         "version" : "0.41"
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Task-Kensho-Logging-0.41.tar.gz",
+         "dynamic_config" : 0,
+         "module" : "Task::Kensho::Logging",
+         "source_sha256" : "aa7b96eaeed3999899b2f6cbcca56e8d34380e76423c0dd795df18a831120c3d",
+         "version" : "0.41"
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Task-Kensho-ModuleDev-0.41.tar.gz",
+         "dynamic_config" : 0,
+         "module" : "Task::Kensho::ModuleDev",
+         "source_sha256" : "319d55edbd578457410b7f8070620e94606ce09da20bbe9fb62c5b1000520e43",
+         "version" : "0.41"
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Task-Kensho-OOP-0.41.tar.gz",
+         "dynamic_config" : 0,
+         "module" : "Task::Kensho::OOP",
+         "source_sha256" : "7168b46de737647fce719989259bbbdded33300f1504d50d0133da0307ed8ec1",
+         "version" : "0.41"
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Task-Kensho-Scalability-0.41.tar.gz",
+         "dynamic_config" : 0,
+         "module" : "Task::Kensho::Scalability",
+         "source_sha256" : "a318774d06c04cc6a0980d59910dcced4cc1f74008bc909e7073965e19323911",
+         "version" : "0.41"
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Task-Kensho-Testing-0.41.tar.gz",
+         "dynamic_config" : 0,
+         "module" : "Task::Kensho::Testing",
+         "source_sha256" : "8dabdcd3f99ef5657cdddeaa043f85bd59444bf988292859a034ba0333d7e591",
+         "version" : "0.41"
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Task-Kensho-Toolchain-0.41.tar.gz",
+         "dynamic_config" : 0,
+         "module" : "Task::Kensho::Toolchain",
+         "source_sha256" : "c224bf43dbd9c1b5555265b2b4453c81994b604a995c7923aa339e1e46f45dc4",
+         "version" : "0.41"
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Task-Kensho-WebCrawling-0.41.tar.gz",
+         "dynamic_config" : 0,
+         "module" : "Task::Kensho::WebCrawling",
+         "source_sha256" : "e6dcee9f897b69c6eb64a46634ef6336a36c6818023cc51f39acb501534645ef",
+         "version" : "0.41"
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Task-Kensho-WebDev-0.41.tar.gz",
+         "dynamic_config" : 0,
+         "module" : "Task::Kensho::WebDev",
+         "source_sha256" : "92ce1cc85a96f0ce18b57f21080b16b7aa40d819ae22a91f89a2265cb19e1980",
+         "version" : "0.41"
+      },
+      {
+         "cpan_path" : "E/ET/ETHER/Task-Kensho-XML-0.41.tar.gz",
+         "dynamic_config" : 0,
+         "module" : "Task::Kensho::XML",
+         "source_sha256" : "078330a7173060536d065c0feb99d64f5f2b94a95f3d87d08cdbb7d003d83e89",
+         "version" : "0.41"
+      },
+      {
+         "cpan_path" : "B/BO/BOBTFISH/Task-Catalyst-4.02.tar.gz",
+         "dynamic_config" : 0,
+         "module" : "Task::Catalyst",
+         "source_sha256" : "9acd7b65fe09c4874aa72145ad341e66f0cac49c656e1a62f18206c615d9706d",
+         "version" : "4.02"
+      }
+   ]
+}

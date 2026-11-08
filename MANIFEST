@@ -20,8 +20,13 @@ lib/XPerl/Installer/Registry.pm
 planning/bootstrap.md
 planning/claude-code-prompt.md
 planning/collaborator-bootstrap.md
+planning/kensho-rc-split/README.md
+planning/kensho-rc-split/claude.txt
+planning/kensho-rc-split/codex.txt
+planning/kensho-rc-split/manifest.json
 planning/perldev-AGENTS.md
 planning/rc-stack-validation-handoff.md
+planning/split-kensho
 planning/xperl-package-manager.md
 t/agent.t
 t/build.t

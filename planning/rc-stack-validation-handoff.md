@@ -29,8 +29,10 @@ Codex owns the Linux RC rebuild and batch: Dist::Zilla, Dancer, Plack,
 Catalyst, Sereal, Sereal::Encoder and Sereal::Decoder. The earlier saved
 Linux session included Task::Kensho; start the new root list without it.
 
-Claude owns Task::Kensho and its dependencies on Darwin: first the new RC
-core build and its full tests, then the Task::Kensho installation.
+The current workload is unrolled in [kensho-rc-split/README.md](kensho-rc-split/README.md).
+Claude owns its Darwin half (69 indexed distributions); Codex owns the Linux
+half (68), in addition to the Linux batch above. Use the corresponding
+`--from` list instead of starting the whole Task::Kensho wrapper.
 Confirm local build authorization with Matt if required by that workspace.
 The root lists are separate. Shared dependencies can occur in both trees;
 claim repairs before editing their common patch. Codex will replay Darwin
@@ -119,7 +121,7 @@ Example Darwin batch, using the interpreter's own site library:
     --prefix "$rc_prefix" --registry "$PWD/xperl-cpan-ports" \
     --workdir "$PWD/tmp/darwin-rc-work" \
     --jobs 4 --repair-jobs 1 --agent claude \
-    Task::Kensho \
+    --from "$PWD/xperl-installer/planning/kensho-rc-split/claude.txt" \
     > "$PWD/tmp/darwin-rc-install.log" 2>&1
 ```
 
