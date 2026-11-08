@@ -4,6 +4,7 @@ use strict;
 use warnings;
 use feature 'signatures';
 use Archive::Tar;
+use CPAN::Meta;
 use Config;
 use Cwd qw(abs_path getcwd);
 use Fcntl qw(:flock);
@@ -114,6 +115,59 @@ sub library_dirs ($self) {
     return @{$self->{site_dirs}}{qw(lib arch)} if $self->{layout} eq 'site';
     my $site = File::Spec->catdir($self->{prefix}, 'lib', 'perl5');
     return ($site, File::Spec->catdir($site, $Config{archname}));
+}
+
+# Resolve dependencies from patched metadata when a registry patch changes
+# META. Otherwise the scheduler can reject a requirement that the build will
+# never see, or miss a prerequisite introduced by the patch.
+sub planned_metadata ($self, $release) {
+    require XPerl::Installer::Deps;
+    my $meta = XPerl::Installer::Deps::_metadata($release->{archive});
+    return $meta unless $self->{registry} && $meta;
+
+    if (!defined $release->{distribution}) {
+        ($release->{distribution}, $release->{distribution_version}) =
+            XPerl::Installer::Deps::_distribution_identity(
+                $meta, $release->{cpan_path});
+    }
+    my $selection = $self->{registry}->patches_for($release);
+    my @patches = @{$selection->{patches}};
+    return $meta unless grep { _changes_metadata($_->{path}) } @patches;
+
+    my $temporary = File::Temp->newdir('metadata-XXXXXXXX',
+                                       DIR => $self->{workdir}, CLEANUP => 1);
+    my $work = "$temporary";
+    my $source = _unpack($release->{archive}, $work);
+    my $number = 0;
+    for my $patch (@patches) {
+        my $log = File::Spec->catfile($work, 'patch-' . ++$number . '.log');
+        my $status = $self->_run($source, $log, 'patch', '--batch',
+                                 '--forward', '-p1', '-i', $patch->{path});
+        if ($status) {
+            open my $input, '<', $log or die "cannot read $log: $!\n";
+            my $detail = do { local $/; <$input> };
+            close $input;
+            die "metadata patch failed (exit $status): $detail\n";
+        }
+    }
+    for my $name (qw(META.json META.yml)) {
+        my $path = File::Spec->catfile($source, $name);
+        return CPAN::Meta->load_file($path, { lazy_validation => 1 })
+            if -f $path;
+    }
+    return;
+}
+
+sub _changes_metadata ($path) {
+    open my $input, '<', $path or die "cannot read $path: $!\n";
+    while (my $line = <$input>) {
+        if ($line =~ m{\A\+\+\+ b/META\.(?:json|yml)(?:\s|\z)}) {
+            close $input;
+            return 1;
+        }
+    }
+    close $input;
+    return 0;
 }
 
 sub _makefile_pl_layout ($self) {

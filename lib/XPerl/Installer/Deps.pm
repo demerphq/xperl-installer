@@ -131,7 +131,7 @@ sub _build ($self, $release, $module, %options) {
         die "distribution $path was already installed but lacks $module\n";
     }
     my $built = eval {
-        my $meta = eval { _metadata($release->{archive}) };
+        my $meta = eval { $self->{builder}->planned_metadata($release) };
         die "invalid CPAN metadata for $module ($path): $@" if $@;
         if ($meta) {
             if (!defined $release->{distribution}) {

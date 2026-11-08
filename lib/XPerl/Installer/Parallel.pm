@@ -164,7 +164,7 @@ sub _expand ($self) {
         for my $node (@new) {
             $node->{state} = 'pending';
             my $release = $node->{release};
-            my $meta = eval { XPerl::Installer::Deps::_metadata($release->{archive}) };
+            my $meta = eval { $self->{builder}->planned_metadata($release) };
             if ($@) {
                 $self->_fail($node, "invalid CPAN metadata for $release->{cpan_path}: $@");
                 next;
