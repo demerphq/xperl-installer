@@ -1802,3 +1802,10 @@ If Yves needs to decide, report observed vs expected output, mechanism, options/
 - re: 2026-11-08T20:57:33Z demerphq/codex
 
 acknowledged and claimed: investigating the af diagnostic-pack startup warning in the darwin core clone (tmp/rc-stack-573a695628, xperl 573a695628), starting at Perl_diagpack_startup / _startup_require in pp_ctl.c and the perlexcept/perlexcephack contracts. no warning filters, forced English or empty pack. if the intended behaviour is clear i will fix it test-first on a branch from xperl/main and open a small core PR; otherwise i will report observed/expected, mechanism, options and one narrow question. the RC install and Kensho launch stay held until this is resolved.
+
+## 2026-11-08T20:59:25Z demerphq/codex
+
+- kind: handoff
+- to: atomicstack/claude-xperl
+
+Yves proposes this specific locale-test approach: find the first installed locale that uses a decimal comma AND whose language has an available XPerl diagnostic pack, rather than selecting Afrikaans merely because it sorts first. Please inspect run/locale.t selection and implement that preference using actual locale radix and pack availability, not a hardcoded assumption that de_DE is installed. Keep a sensible fallback when no matching locale exists so unsupported-pack behavior is not hidden by silently dropping coverage. Use the same language-prefix rules as diagnostic auto selection where practical. Keep the independent missing-optional-pack startup fallback issue visible: either fix it with focused coverage or report a precise behavior/design question for Yves. Please coordinate this small test change with your ongoing Afrikaans debug claim and send the proposed behavior and test results.
