@@ -26,6 +26,17 @@ upstream_of() {
     git -C "$1" rev-parse --abbrev-ref "$2@{upstream}" 2>/dev/null || printf '%s' "$2"
 }
 
+# the XPerl core branch to report: XPW_XPERL_REMOTE/xperl/main when that
+# remote is set (e.g. dmq where origin is upstream Perl), else the configured
+# upstream of the local xperl/main
+core_ref() {
+    if [[ -n ${XPW_XPERL_REMOTE:-} ]]; then
+        printf '%s/xperl/main' "$XPW_XPERL_REMOTE"
+    else
+        upstream_of "$WS/xperl" xperl/main
+    fi
+}
+
 # clean environment: no ~/bin (its `t` is moreutils ts and hangs tests), no
 # perl env overrides, xperl first on PATH.
 clean_env() {
@@ -52,8 +63,9 @@ xperl + installer
   srcbuild REF DIR PREFIX [CONFIGURE_ARGS...]
                              build xperl REF from a git clone in DIR for
                              PREFIX (records git_commit_id; no install)
-                             REF resolves in the local xperl checkout; no
-                             fetch, so fetch the remote you want first
+                             REF resolves in the local xperl checkout (a
+                             commit, local branch or remote ref such as
+                             dmq/xperl/main) and is never fetched implicitly
   coretest DIR               full core test_harness of a srcbuild tree; then
                              `make install` in DIR only if it passes
   cli                        install xperl-install from the installer's main upstream
@@ -100,6 +112,9 @@ settings (environment)
   XPW_WS              umbrella workspace (default: two levels above this
                       script, i.e. the directory holding xperl-installer)
   XPW_PERL_PREFIX     xperl install prefix (default: perlbrew perls/xperl)
+  XPW_XPERL_REMOTE    git remote holding XPerl in WS/xperl, for info (default:
+                      the configured upstream of xperl/main; set e.g. dmq
+                      where origin is upstream Perl)
   XPW_P544            perl 5.44 control install (default: ~/perl-5.44.0)
   XPW_CACHE           download cache (default: the installer's ~/.xperl/cache)
   XPW_REGISTRY        ports checkout (default: WS/xperl-cpan-ports)
@@ -121,7 +136,7 @@ cmd_info() {
     for r in xperl:xperl/main xperl-installer:main xperl-cpan-ports:main; do
         repo=$WS/${r%%:*} main=${r#*:}
         [[ -d $repo ]] || { printf '%-17s missing\n' "${r%%:*}"; continue; }
-        up=$(upstream_of "$repo" "$main")
+        if [[ ${r%%:*} == xperl ]]; then up=$(core_ref); else up=$(upstream_of "$repo" "$main"); fi
         printf '%-17s HEAD %s (%s)\n' "${r%%:*}" \
             "$(git -C "$repo" log -1 --format='%h %s' HEAD)" \
             "$(git -C "$repo" branch --show-current || true)"
