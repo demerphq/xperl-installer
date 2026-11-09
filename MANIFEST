@@ -40,6 +40,7 @@ t/deps.t
 t/environment.t
 t/fetch.t
 t/impact.t
+t/metadata-patch.t
 t/native-prefix.t
 t/parallel.t
 t/platform.t

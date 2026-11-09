@@ -7,15 +7,22 @@ reusable repairs, and record exactly which configurations validated them.
 ## Repositories and current checkpoints
 
 - [XPerl](https://github.com/demerphq/xperl), branch `xperl/main`:
-  `573a695628` fixes aliased binary-operand stack ownership. Earlier fixes
+  `8903238ce7` includes the parser evaluation-order audit. Generic fixes
+  `431373cd01` and `abc49230f7` sequence parser operations and correct
+  multiline `use` attribution. `573a695628` fixes aliased binary-operand
+  stack ownership. Earlier fixes
   are `33344c78f5` (XGraph lifetime), `583875fe4a` (dispatch callbacks and
   custom `isa`), and `2e6cc28cfd` (`die`/`PROPAGATE` stack handling).
 - [Installer](https://github.com/demerphq/xperl-installer), branch `main`:
-  `05e5d45` adds built-in Codex/Claude adapters and graceful stop/resume.
+  `ccd95ee` adds upstream issue/PR research to repair requests and both
+  adapters. `c0ee4bc` publishes completed distributions automatically.
+  Built-in Codex/Claude adapters and graceful stop/resume are available.
 - [Ports](https://github.com/demerphq/xperl-cpan-ports), branch `main`:
-  `08fee801` records the Devel::Cover callback repair and recipe. Prior
-  `a8227c38` includes Data::Printer/Data::Peek RC fixes and corrected build
-  evidence. Use the latest main, including subsequent reviewed changes.
+  `776d20cb` refreshes the catalog after accepting the fixed-core
+  Devel::Cover patch. `530a368c` records its Linux RC pass. The registry
+  includes the Ref::Util::XS provider repair, an unmodified Type::Tiny pass,
+  and reconciled Linux receipts. Use the latest main, including subsequent
+  reviewed changes.
 
 Read each repository's instructions and the workspace guidance before
 editing. The general setup is in [collaborator-bootstrap.md](collaborator-bootstrap.md).
@@ -38,16 +45,40 @@ The root lists are separate. Shared dependencies can occur in both trees;
 claim repairs before editing their common patch. Codex will replay Darwin
 repairs on Linux. A Linux pass is not a Darwin pass or vice versa.
 
-The immediate review task for Claude, while build authorization is pending,
-is to review the installer adapters, especially the Claude CLI invocation,
-TOML profiles, and resume. Fixture tests make no paid AI calls. Report
-findings before editing files Codex may be changing.
+The initial Linux root batch and assigned Linux half finished. This does
+not establish that the combined selection passes on each host. Replay shared
+repairs on the other platform and check the combined selection separately.
+Data::Dump::Streamer is deferred by Yves. Carp::REPL requires it directly,
+so its CatalystX::REPL dependency chain is deferred too.
 
 Use the installer repository's `agent-comms` branch. Acknowledge the task,
 state what is running or the exact blocker, and claim a distribution before
 editing its shared patch. Poll about once a minute during active work. Keep
 branches current, publish stable changes, and announce commits and PRs.
 Do not assume a sent message has been accepted until there is a reply.
+
+## Latest Linux validation
+
+The installed perlbrew RC interpreter is XPerl v5.45.5 at `8903238ce7`.
+Its full suite passed 3,313 files and 1,470,311 tests. The build uses GCC
+13.3.0 on x86_64 Linux, double precision, and no threads, multiplicity,
+debugging, long double or quadmath. These results establish only that profile.
+
+The installed standalone installer passed 587 tests; its final web-tool
+adapter checks passed 116 focused tests. Ref::Util::XS 0.117 passed 481 tests
+in the interpreter's main site library, followed by unmodified Type::Tiny
+2.010001 passing 9,159 tests with acceleration enabled. Devel::Cover 1.52
+passed 86 files and 104 assertions with patch digest
+`03c403682313c0fa1140057f5e1ff5aae235ff0c3e244b77251623b53df5a892`.
+Test::Differences compares each complete coverage report in one assertion;
+without it, the same suite counts individual output lines instead.
+Want 0.29 passed 148 tests with its registered patch; unmodified HTML::Tree
+5.07 passed 989 tests. The combined Linux follow-up queues 142 module targets
+from both owner lists, omitting CatalystX::REPL while its DDS chain is
+deferred. A queued target is not a claimed pass.
+
+The shared operational log is `tmp/xperl-rc-stack-install.log` in the
+umbrella workspace. It includes the rebuild, tooling checks and replays.
 
 ## Build a separate RC interpreter
 
@@ -58,7 +89,7 @@ binaries. Leave existing installations intact. From the umbrella workspace:
 unset PERL5LIB PERL5OPT PERL_LOCAL_LIB_ROOT PERL_MM_OPT PERL_MB_OPT
 mkdir -p tmp
 git clone --branch xperl/main https://github.com/demerphq/xperl.git tmp/xperl-rc-source
-git -C tmp/xperl-rc-source merge-base --is-ancestor 573a695628 HEAD
+git -C tmp/xperl-rc-source merge-base --is-ancestor 8903238ce7 HEAD
 
 perlbrew install --as xperl-rc-stack --no-patchperl -j4 \
     -Dusedevel -Accflags=-DPERL_RC_STACK "$PWD/tmp/xperl-rc-source"
@@ -167,20 +198,29 @@ differences. Separate build evidence records where that exact patch digest
 passed. The agent receives copies of applied and historically known patches,
 the actual build profile, failure logs and linked migration recipes.
 
+Before editing, check the upstream repository, bug reports, pending PRs and
+relevant fixes using the release metadata resources in the request. Verify
+that any existing report matches this failure and build configuration.
+Record findings and public links through `upstream_research_path`. If access
+is unavailable, record that and continue local diagnosis.
+
 Read `refcounted-stack-observation-v1` and
 `refcounted-stack-callback-v1` in the ports recipes. Normal XS compatibility
 stacks and instrumented callbacks may have different ownership contracts.
 Check the actual call path. Do not hide a lifetime bug by changing expected
 reference counts. Review the core refcounted-stack guidance before core work.
 
-The installer writes successful distribution repairs to a writable registry,
-including the consolidated patch, selector and portable evidence. Verify
-registration succeeded. Assess every repair for a new or improved recipe.
-Retain failures and human actions as well as successes:
+The installer writes successful distribution repairs to its publication
+checkout, including the consolidated patch, selector and portable evidence.
+Verify registration succeeded. Assess every repair for a new or improved
+recipe. With the default `--publish auto`, each completed distribution
+commits and pushes its record, including successful unmodified builds and
+failures. Explicit permission refusals switch to a batched fork PR. Network
+failures retain pending publication for resume. Summaries regenerate when
+the run drains. Pull the supplied ports checkout to see the shared results:
 
 ```sh
-"$rc_perl" xperl-cpan-ports/bin/import-receipts --cache "$PWD/tmp/darwin-rc-work"
-"$rc_perl" xperl-cpan-ports/bin/build-xs-index
+git -C xperl-cpan-ports pull --ff-only
 "$rc_perl" xperl-cpan-ports/bin/build-xs-index --check
 ```
 
