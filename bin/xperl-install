@@ -35,6 +35,7 @@ Usage: xperl-install resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Mo
                      [--jobs K] [--phase-timeout SECONDS]
                      [--native-prefix DIR]... [--no-native-prefix]
                      [--layout auto|site|install_base]
+                     [--publish auto|direct|pr|off]
                      [--mirror URL|DIR] [--cache DIR] [--workdir DIR] Module::Name...
        xperl-install install-ported --registry DIR [--config FILE] [--prefix DIR]
                      [--dry-run] [--json] [--resume] [--action-shell]
@@ -42,6 +43,7 @@ Usage: xperl-install resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Mo
                      [--phase-timeout SECONDS]
                      [--native-prefix DIR]... [--no-native-prefix]
                      [--layout auto|site|install_base]
+                     [--publish auto|direct|pr|off]
                      [--only AUTHOR/Dist]... [--exclude AUTHOR/Dist]...
                      [--agent NAME | --repair-command PATH]
                      [--repair-jobs K]
@@ -57,6 +59,10 @@ blank lines and # comments are ignored), and continues past failures.
 Failed releases enter the repair queue while independent builds continue.
 --repair-jobs K allows up to K repair commands to run at once.
 --repair-interval SECONDS spaces repair starts across installer processes.
+--publish auto commits and pushes completed results to a Git ports registry;
+an explicit permission refusal selects a batch fork PR. direct keeps failed
+pushes queued, pr batches from the start, and off disables publication.
+Publication needs git-compose-commit, and PR submission also needs gh.
 install-ported rebuilds every release recorded as successful in the ports
 registry and writes report.json and summary.txt under WORKDIR/install-ported.
 scan-impact searches CPAN source on grep.metacpan.org for code that may need
@@ -82,7 +88,7 @@ my ($config_path, $agent, $mirror, $cache, $workdir, $refresh, $prefix,
     $repair_interval,
     $dry_run, $as_json, $resume, @only, @exclude, $jobs, $from, $phase_timeout,
     @native_prefixes, $no_native_prefix, $repair_jobs,
-    $layout, $action_shell, @patterns, $scan_files, $scan_ignore);
+    $layout, $publish, $action_shell, @patterns, $scan_files, $scan_ignore);
 GetOptionsFromArray(
     \@ARGV,
     'config=s' => \$config_path,
@@ -110,11 +116,13 @@ GetOptionsFromArray(
     'native-prefix=s' => \@native_prefixes,
     'no-native-prefix' => \$no_native_prefix,
     'layout=s' => \$layout,
+    'publish=s' => \$publish,
     'from=s' => \$from,
     'pattern=s' => \@patterns,
     'files=s' => \$scan_files,
     'ignore=s' => \$scan_ignore,
 ) or die usage();
+my $explicit_publish = $publish;
 
 my $settings = defined($config_path)
     ? XPerl::Installer::Config->load($config_path) : {};
@@ -128,6 +136,9 @@ $jobs     //= $defaults->{jobs} // 4;
 $phase_timeout //= $defaults->{phase_timeout};
 $repair_jobs //= $defaults->{repair_jobs} // 1;
 $layout //= $defaults->{layout};
+$publish //= $defaults->{publish} // 'auto';
+die "--publish must be auto, direct, pr or off\n"
+    unless $publish =~ /\A(?:auto|direct|pr|off)\z/;
 die "--native-prefix and --no-native-prefix cannot be combined\n"
     if @native_prefixes && $no_native_prefix;
 @native_prefixes = $no_native_prefix ? ()
@@ -168,10 +179,12 @@ if ($action eq 'install' && $resume) {
     my $options = $saved->{options};
     ($prefix, $mirror, $cache, $registry, $jobs, $repair_jobs,
      $repair_command, $repair_agent, $repair_attempts, $repair_timeout, $repair_limit,
-     $repair_interval, $phase_timeout, $layout) =
+     $repair_interval, $phase_timeout, $layout, $publish) =
         @{$options}{qw(prefix mirror cache registry jobs repair_jobs
                       repair_command repair_agent repair_attempts repair_timeout repair_limit
-                      repair_interval phase_timeout layout)};
+                      repair_interval phase_timeout layout publish)};
+    $publish //= 'auto';
+    $publish = $explicit_publish if defined $explicit_publish;
     @native_prefixes = @{$options->{native_prefixes}};
 }
 
@@ -216,6 +229,7 @@ sub builder ($ports) {
         (defined $phase_timeout ? (phase_timeout => $phase_timeout) : ()),
         native_prefixes => [@native_prefixes],
         (defined $layout ? (layout => $layout) : ()),
+        publish => $publish,
     );
 }
 
@@ -292,6 +306,7 @@ dispatch ($action) {
                 repair_limit => $repair_limit,
                 repair_interval => $repair_interval,
                 phase_timeout => $phase_timeout, layout => $layout,
+                publish => $publish,
                 native_prefixes => [map { File::Spec->rel2abs($_) }
                                     @native_prefixes],
             },
@@ -362,22 +377,29 @@ dispatch ($action) {
                              grep { $_->{status} eq 'installed' && $_->{receipt} }
                              @{$result->{nodes}}],
                 nodes => $result->{nodes},
+                %{$install_builder->finish_publication},
             });
             exit($status eq 'installed' ? 0 : $status eq 'stopped' ? 2 : 1);
         }
         my $deps = XPerl::Installer::Deps->new(
             fetcher => fetcher(), builder => $install_builder);
         my $result = eval { $deps->install($module) };
-        if (!$result && "$@" =~ /\AXPERL_INSTALL_STOPPED/) {
+        my $failure = $@;
+        if (!$result && "$failure" =~ /\AXPERL_INSTALL_STOPPED/) {
             print JSON::PP->new->canonical->pretty->encode({
                 module => $module, status => 'stopped', receipts => $deps->{receipts},
+                %{$install_builder->finish_publication},
                 resume => { workdir => $install_builder->{workdir},
                     command => 'xperl-install install --resume --workdir '
                         . $install_builder->{workdir} },
             });
             exit 2;
         }
-        die $@ unless $result;
+        if (!$result) {
+            $install_builder->finish_publication;
+            die $failure;
+        }
+        %$result = (%$result, %{$install_builder->finish_publication});
         print JSON::PP->new->canonical->pretty->encode($result);
     }
     on ('install-ported') {

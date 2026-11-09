@@ -24,6 +24,7 @@ use Time::HiRes qw(time);
 use XPerl::Installer::Agent;
 use XPerl::Installer::Platform;
 use XPerl::Installer::Proposal;
+use XPerl::Installer::Publication;
 use XPerl::Installer::Fetch;
 
 sub new ($class, %args) {
@@ -92,7 +93,7 @@ sub new ($class, %args) {
         man3dir => $Config{installsiteman3dir},
         %{$args{site_dirs} // {}},
     );
-    return bless {
+    my $self = bless {
         native_prefixes => [@$native_prefixes],
         prefix  => $prefix,
         layout  => $layout,
@@ -116,6 +117,39 @@ sub new ($class, %args) {
             : File::Spec->catfile(File::Spec->tmpdir,
                                   "xperl-repair-$<.lock"),
     }, $class;
+    $self->enable_publication($args{publish}) if defined $args{publish};
+    return $self;
+}
+
+sub enable_publication ($self, $mode = 'auto') {
+    die "publication mode must be auto, direct, pr or off\n"
+        unless $mode =~ /\A(?:auto|direct|pr|off)\z/;
+    return if !$self->{registry} || $mode eq 'off';
+    my $publisher = eval {
+        XPerl::Installer::Publication->prepare($self, mode => $mode);
+    };
+    if ($@) {
+        my $reason = $@;
+        chomp $reason;
+        warn "ports publication setup pending: $reason\n";
+        $self->{publication} = XPerl::Installer::Publication->deferred($self, $reason);
+        return;
+    }
+    return unless $publisher;
+    $self->{publication} = $publisher;
+    $self->{registry} = $publisher->registry;
+    warn "ports publication: $publisher->{mode}, branch $publisher->{branch}; "
+        . "checkout $publisher->{checkout}\n";
+}
+
+sub finish_publication ($self) {
+    return {} unless $self->{publication};
+    my $result = eval { $self->{publication}->finish($self) };
+    return { publication => $result } if $result;
+    my $reason = $@ || "publication did not finish\n";
+    chomp $reason;
+    warn "ports publication remains pending: $reason\n";
+    return { publication => { status => 'pending', reason => $reason } };
 }
 
 sub repair_enabled ($self) {
@@ -551,6 +585,23 @@ sub install ($self, $release, %options) {
     open my $out, '>', $receipt or die "cannot write $receipt: $!\n";
     print {$out} JSON::PP->new->canonical->pretty->encode($record);
     close $out or die "cannot close $receipt: $!\n";
+    # Publication records both successful builds and failures. Keep the
+    # immutable build receipt separate from its retryable publication state.
+    if (!$deferred && $self->{publication}) {
+        my $publication = eval {
+            my $result = $self->{publication}->complete($self, $release, $receipt);
+            XPerl::Installer::Publication::_write_json(
+                File::Spec->catfile($work, 'publication.json'), $result);
+            $result;
+        };
+        if (!$publication) {
+            chomp(my $reason = $@ || 'cannot save publication state');
+            warn "ports publication pending; receipt $receipt: $reason\n";
+            $publication = { status => 'pending', reason => $reason,
+                             receipt => $receipt };
+        }
+        $record->{publication} = $publication;
+    }
     die { %$error, receipt => $receipt } if $deferred;
     die "$error receipt: $receipt\n" if $error;
     $record->{receipt} = $receipt;

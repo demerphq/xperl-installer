@@ -266,6 +266,7 @@ sub run ($class, %args) {
             : [map { { key => $_->{key}, %{$_->{user_action}} } }
                grep { $_->{user_action} } @results],
     };
+    %$report = (%$report, %{$builder->finish_publication});
     $report->{report} = File::Spec->catfile($dir, 'report.json');
     $report->{summary} = File::Spec->catfile($dir, 'summary.txt');
     _write_json($report->{report}, $report);
@@ -490,6 +491,11 @@ sub summary ($report) {
         "workdir: $report->{workdir}",
     );
     my $excluded = scalar @{$report->{excluded} // []};
+    if (my $publication = $report->{publication}) {
+        push @lines, 'publication: ' . $publication->{status}
+            . ($publication->{url} ? " ($publication->{url})" : '')
+            . ($publication->{reason} ? ": $publication->{reason}" : '');
+    }
     push @lines, 'stopped: rerun the same command with --resume'
         if $report->{stopped};
     push @lines, "excluded: $excluded "

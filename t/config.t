@@ -148,4 +148,20 @@ for my $case (
     like($ok ? '' : $@, $case->[1], 'invalid provider settings are rejected');
 }
 
+# Publication choices are explicit so a typo cannot silently disable the
+# registry feedback loop or switch contribution modes.
+for my $mode (qw(auto direct pr off)) {
+    open $output, '>:raw', $path or die $!;
+    print {$output} "schema = 1\n[install]\npublish = '$mode'\n";
+    close $output or die $!;
+    is(XPerl::Installer::Config->load($path)->{install}{publish}, $mode,
+       "publication mode $mode is loaded");
+}
+open $output, '>:raw', $path or die $!;
+print {$output} "schema = 1\n[install]\npublish = 'push-maybe'\n";
+close $output or die $!;
+$ok = eval { XPerl::Installer::Config->load($path); 1 };
+like($ok ? '' : $@, qr/install\.publish must be auto, direct, pr or off/,
+     'an unknown publication mode is rejected');
+
 done_testing();

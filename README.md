@@ -434,16 +434,66 @@ XPerl version selector, and portable test evidence. It links recipes whose
 source signatures appear in the patch. The receipt records the registration
 paths and digest. If registration fails, installation remains successful but
 the receipt records the error and the installer warns on stderr. The local
-proposal remains available for retry. Review the new registry files, then
-commit and publish them through the checkout's normal Git workflow. A later
-install selects the registered patch without an AI agent.
+proposal remains available for retry. A later install selects the registered
+patch without an AI agent.
 
 The repair program can be any agent wrapper that accepts this protocol. A
 Codex wrapper, a Claude wrapper, or another tool receives the same request
 and must return the same exit status and source edits. The request contains
 no provider-specific fields. Credentials and provider settings belong to the
-wrapper, not the installer or its receipts. The installer does not bundle an
-AI service or publish Git commits or pull requests itself.
+selected provider profile, not its receipts. The installer does not bundle
+an AI service.
+
+## Publishing completed distributions
+
+With a Git ports registry, `--publish auto` is the default. Every completed
+distribution is committed and pushed immediately when it adds new facts.
+This includes successful builds needing no patch, successful repairs, and
+unresolved failures. An already installed module produces no build evidence.
+Repeating the same result creates no duplicate observation or empty commit.
+
+Publication uses the configured upstream of the ports repository's `main`
+branch, including its remote name and push URL. Configure that upstream to
+the shared ports repository. It need not be named `origin`. Git and
+`git-compose-commit` must be on PATH, with a Git author name and email
+configured. The installer logs its publication mode and destination branch.
+
+The installer keeps a separate checkout under `WORKDIR/publication/`. Known
+patches and local registry changes are copied there, and subsequent repair
+registration uses that checkout. Your source checkout, staged changes and
+current branch are left alone. Pull the ports repository normally to see
+the published results there. Only the completed distribution's files and
+linked recipes enter each commit. Human summaries and the XS patch catalog
+are regenerated from committed results when the run drains.
+
+Choose a publication mode with `--publish MODE` or `[install].publish` in
+TOML:
+
+- `auto`: push directly. A clear write-permission refusal switches to a
+  batch fork pull request. Network failures and conflicting repairs remain
+  queued for retry or review.
+- `direct`: push directly and keep every rejected push queued.
+- `pr`: batch results locally, then push a contribution branch to a GitHub
+  fork and create or reuse one pull request when the run drains. This needs
+  an authenticated `gh` command and permission to create a fork and PR.
+- `off`: keep the existing local registration behavior without Git
+  publication.
+
+A publication error does not change a successful build into a failure.
+The installer reports publication separately in its JSON result and retains
+the immutable receipt, logs and pending queue under the work directory.
+Resume with the same work directory to retry pending publication without
+rebuilding completed releases:
+
+```sh
+xperl-install install --resume --workdir /path/to/work
+```
+
+Concurrent status observations are merged. Conflicting source patches are
+left for review and revalidation. Publication never resolves a race with a
+force push. Non-Git registry snapshots and installs without a registry keep
+working without Git or a hosting account; snapshots do not have an automatic
+publication destination.
 
 ## Validating recorded ports
 

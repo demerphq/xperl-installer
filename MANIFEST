@@ -16,6 +16,7 @@ lib/XPerl/Installer/Parallel.pm
 lib/XPerl/Installer/Platform.pm
 lib/XPerl/Installer/Ported.pm
 lib/XPerl/Installer/Proposal.pm
+lib/XPerl/Installer/Publication.pm
 lib/XPerl/Installer/Registry.pm
 planning/bootstrap.md
 planning/automatic-ports-publication.md
@@ -42,6 +43,7 @@ t/native-prefix.t
 t/parallel.t
 t/platform.t
 t/ported.t
+t/publication.t
 t/registry.t
 t/repair.t
 t/repair-limits.t

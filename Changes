@@ -1,4 +1,10 @@
 Unreleased
+    Publish each completed distribution automatically with a Git ports
+    registry, including no-change successes and unresolved failures.
+    --publish auto|direct|pr|off selects direct pushes or batched fork PRs.
+    Keep a separate publication checkout and durable retry queue, preserve
+    unrelated work, and merge concurrent status observations. Publication
+    failures leave build results intact and resume without rebuilding.
     Add stop --workdir DIR to drain active builds and repair workers without
     starting queued work. Save stopped results and continue with --resume.
     Provide built-in Codex and Claude Code repair adapters and shared repair
