@@ -73,9 +73,12 @@ passed 86 files and 104 assertions with patch digest
 Test::Differences compares each complete coverage report in one assertion;
 without it, the same suite counts individual output lines instead.
 Want 0.29 passed 148 tests with its registered patch; unmodified HTML::Tree
-5.07 passed 989 tests. The combined Linux follow-up queues 142 module targets
-from both owner lists, omitting CatalystX::REPL while its DDS chain is
-deferred. A queued target is not a claimed pass.
+5.07 passed 989 tests. The combined Linux follow-up satisfied all 142 selected
+module targets from both owner lists, installing and testing 40 distributions
+while reusing modules already available in the RC prefix. Every new result
+was pushed, with no user actions or AI repairs needed. CatalystX::REPL was
+omitted while its DDS chain is deferred, so this is not a complete
+Task::Kensho installation.
 
 The shared operational log is `tmp/xperl-rc-stack-install.log` in the
 umbrella workspace. It includes the rebuild, tooling checks and replays.
@@ -223,6 +226,12 @@ the run drains. Pull the supplied ports checkout to see the shared results:
 git -C xperl-cpan-ports pull --ff-only
 "$rc_perl" xperl-cpan-ports/bin/build-xs-index --check
 ```
+
+Use `--publish off` for candidate validation. After acceptance, replay against
+current ports main in a fresh work directory. Do not enable publication by
+resuming an old candidate-registry session. A maintainer backfilling older
+receipts should use a fresh publication context tied to current ports main,
+retaining each original receipt's build profile.
 
 Review generated records and diffs. Do not commit local home directories,
 absolute build paths, raw logs, or duplicate identical observations. Do not
