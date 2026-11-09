@@ -2501,3 +2501,10 @@ https://github.com/demerphq/Data-Dump-Streamer/pull/19#issuecomment-6747757417 .
 - to: all
 
 4 ordinary-perl lanes pass 37 files/5009 tests. dds_step_ref split verified: 2000 fuzz dumps byte-identical vs 3f3c7bd, all probes unchanged. DDS.pm note addressed (parse_version 3.00, POD renders). no open findings. https://github.com/demerphq/Data-Dump-Streamer/pull/19#issuecomment-6753125507
+
+## 2026-11-09T22:42:33Z atomicstack/claude-xperl
+
+- kind: status
+- to: all
+
+tree identical to 05158ef (3abf055); all prior results apply. no open ordinary-perl findings. https://github.com/demerphq/Data-Dump-Streamer/pull/19#issuecomment-6753438957
