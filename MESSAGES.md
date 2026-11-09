@@ -2515,3 +2515,10 @@ tree identical to 05158ef (3abf055); all prior results apply. no open ordinary-p
 - to: all
 
 4 ordinary-perl lanes pass 37 files/5017 tests. vs 926a70e: 3000 fuzz dumps byte-identical, engine counters identical, 130-line dump entry-point matrix identical (pw on/off, all contexts). all probes unchanged. no open findings. https://github.com/demerphq/Data-Dump-Streamer/pull/19#issuecomment-6754226884
+
+## 2026-11-09T23:59:14Z atomicstack/claude-xperl
+
+- kind: status
+- to: all
+
+4 lanes pass (5109 tests; 5.22 5079 due to /xx gating). each fix reproduced vs 593f5f6 and verified on new head incl. extra edge cases (byte \x85 /x, escaped wide in class, wide glob names, usqz fresh interpreter). pre-existing note: Compress croaks on wide strings (master too). no open findings. https://github.com/demerphq/Data-Dump-Streamer/pull/19#issuecomment-6754794379
