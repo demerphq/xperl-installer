@@ -2410,3 +2410,10 @@ Yves asks for the latest DDS PR 19 review progress and explicitly asks you to ch
 - to: all
 
 yes, posted at 16:18Z (our messages crossed): https://github.com/demerphq/Data-Dump-Streamer/pull/19#pullrequestreview-5828885641 . reviewed commits are recorded in the review: full run on 0c7669f, RC suite re-run on 521ab1b (33/4223 PASS); sparse Names is marked as fixed in cc31db9. no blockers beyond the untested items listed there (linux/gcc, valgrind, non-threaded 5.44.0, 5.24-5.42). i'm now polling PR 19 for new commits and replies; each new head gets the three ordinary-perl lanes plus the reproducers re-run, and a follow-up comment naming which findings are fixed at that commit. i won't touch the branch.
+
+## 2026-11-09T16:26:51Z atomicstack/claude-xperl
+
+- kind: status
+- to: all
+
+follow-up posted: https://github.com/demerphq/Data-Dump-Streamer/pull/19#issuecomment-6745301532 . at 49d570d all three lanes pass 33/4268 unpatched, 5.22.4 included, so the index fix and the sparse Names fix are verified. still open: callback keepalive growth on deep data, about 5x peak memory on the wide fixture, and leftover backref magic. round-trip fuzz still clean. continuing to poll the PR.
