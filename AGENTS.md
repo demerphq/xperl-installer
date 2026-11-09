@@ -22,5 +22,13 @@ is for core fixes and focused core testing; reinstall XPerl before validating
 the installer against a core change. Preserve ordinary CPAN installation
 without an AI agent or a patch registry.
 
+Before repairing a distribution, check its upstream repository, relevant bug
+reports, pending PRs and recent fixes. Use release metadata and documentation
+to find the project. Verify that existing reports match the failure, Perl
+version and build configuration. Record useful links and findings through
+the repair request's upstream research protocol. If access is unavailable,
+record that and continue local diagnosis. Do not post upstream messages
+without authorization.
+
 For changes in the perldev workspace, also follow the workspace `AGENTS.md`
 and `style_rules/` guidance. Use `git-compose-commit` for commits.

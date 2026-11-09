@@ -17,6 +17,7 @@ use JSON::PP;
 use POSIX qw(strftime);
 use version;
 use builtin qw(jumphash_string siphash_2_4);
+use XPerl::Installer::Upstream;
 no warnings 'experimental::builtin';
 
 sub new ($class, %args) {
@@ -344,6 +345,9 @@ sub register_repair ($self, $release, $record) {
         platform => \%platform,
         files => $proposal->{files},
         recipe_candidates => \@recipes,
+        ($record->{upstream_research}
+            ? (upstream_research => XPerl::Installer::Upstream
+                    ->evidence($record->{upstream_research})) : ()),
         tests => [map { { phase => $_, result => 'pass' } }
                       qw(test proposal-check install)],
     };

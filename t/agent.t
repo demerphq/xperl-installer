@@ -37,11 +37,19 @@ is_deeply([@codex[0 .. 2]], ['codex', 'exec', '--sandbox'],
 ok(grep($_ eq $model, @codex), 'the model is passed without shell expansion');
 ok(grep($_ eq 'model_reasoning_effort="high"', @codex),
    'Codex receives its reasoning configuration');
+ok(grep($_ eq 'web_search="live"', @codex),
+   'Codex can search current upstream reports without shell network access');
 is($codex[-3], 'extra directory', 'extra writable directory is one argument');
 like($codex[-1], qr/Read the JSON repair request at\n"request with spaces.json"/,
      'the shared prompt identifies the request unambiguously');
 like($codex[-1], qr/unattended operation/, 'the prompt explains human handoff');
 like($codex[-1], qr/Preserve previous fixes/, 'the prompt preserves prior ports');
+like($codex[-1], qr/upstream repository, bug reports\nand pending pull requests/,
+     'repair agents check existing upstream reports before editing');
+like($codex[-1], qr/upstream_research_path/,
+     'repair agents receive the research report protocol');
+like($codex[-1], qr/Continue local diagnosis when upstream is\nunavailable/,
+     'upstream access is optional for local repair');
 
 my @claude = XPerl::Installer::Agent->command({
     provider => 'claude', executable => 'claude', model => 'sonnet',
@@ -50,8 +58,8 @@ my @claude = XPerl::Installer::Agent->command({
 is_deeply([@claude[0 .. 2]],
           ['claude', '--print', '--no-session-persistence'],
           'Claude uses a fresh noninteractive session');
-ok(grep($_ eq 'Bash,Read,Edit,Write,Glob,Grep', @claude),
-   'Claude can run builds and edit without interactive tool approval');
+ok(grep($_ eq 'Bash,Read,Edit,Write,Glob,Grep,WebSearch,WebFetch', @claude),
+   'Claude can build, edit and research upstream without tool approval');
 ok(grep($_ eq '--effort', @claude), 'Claude receives its effort setting');
 
 # An unavailable provider fails before dependency resolution or builds.

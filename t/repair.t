@@ -52,6 +52,20 @@ for my $name (qw(Fixable Unfixable Slow NeedsLibrary Unknown NeedsPerl Extra)) {
         ? "use Test::More tests => 1; pass('CPAN prerequisite builds');\n"
         : "use Test::More tests => 1; use Example::$name; is(Example::${name}::value(), 42);\n";
     $tar->add_data("$dist/t/basic.t", $test);
+    if ($name eq 'Fixable') {
+        $tar->add_data("$dist/META.json", JSON::PP->new->encode({
+            'meta-spec' => { version => 2 },
+            name => 'Example-Fixable', version => '1.00',
+            abstract => 'Repair fixture', author => ['Example'],
+            license => ['perl_5'], release_status => 'stable',
+            dynamic_config => JSON::PP::false, generated_by => 'fixture',
+            resources => {
+                repository => { type => 'git',
+                    url => 'https://example.org/Example-Fixable.git' },
+                bugtracker => { web => 'https://example.org/issues' },
+            },
+        }));
+    }
     $tar->write(File::Spec->catfile($releases, "$dist.tar.gz"), 1);
 }
 
@@ -69,6 +83,17 @@ my $request = JSON::PP->new->decode(do { local $/; <$request_file> });
 open my $marker, '>', $ENV{XPERL_REPAIR_MARKER} or die $!;
 print {$marker} JSON::PP->new->encode($request);
 close $marker or die $!;
+
+# Research is independent of whether the outcome is a fix or a handoff.
+if ($request->{module} =~ /Example::(?:Fixable|Unfixable|Unknown)\z/) {
+    open my $research, '>', $request->{upstream_research_path} or die $!;
+    print {$research} JSON::PP->new->encode({
+        schema => 1, status => 'checked',
+        summary => "Related report; local source is $request->{source}",
+        references => [{ url => 'https://example.org/issues/42' }],
+    });
+    close $research or die $!;
+}
 exit 0 if $request->{module} eq 'Example::Unfixable';
 if ($request->{module} eq 'Example::Slow') { sleep 3; exit 0 }
 if ($request->{module} eq 'Example::NeedsLibrary') {
@@ -225,9 +250,25 @@ unlike($patch, qr/^\+\+\+ b\/(?:Makefile$|blib\/)/m,
        'patch excludes generated build products');
 unlike($patch, qr/Attribute\.o/, 'patch excludes an agent-built object file');
 unlike($patch, qr/tmp2/, 'patch excludes a test scratch file');
+unlike($patch, qr/\.xperl-repair-/, 'patch excludes repair research files');
+is($receipt->{upstream_research}[0]{status}, 'checked',
+   'receipt retains the agent upstream check');
+open my $evidence_file, '<', $receipt->{registration}{evidence} or die $!;
+my $evidence = JSON::PP->new->decode(do { local $/; <$evidence_file> });
+close $evidence_file or die $!;
+is_deeply($evidence->{upstream_research}, [{
+    status => 'checked', references => [{ url => 'https://example.org/issues/42' }],
+}], 'registry evidence preserves upstream links without local explanations');
 open my $request_file, '<', $ENV{XPERL_REPAIR_MARKER} or die $!;
 my $request = JSON::PP->new->decode(do { local $/; <$request_file> });
 is($request->{failed_phase}, 'test', 'agent received failed phase');
+is($request->{upstream}{repository}{url},
+   'https://example.org/Example-Fixable.git',
+   'agent receives the upstream repository from release metadata');
+is($request->{upstream}{bugtracker}{web}, 'https://example.org/issues',
+   'agent receives the upstream bug tracker');
+like($request->{upstream_research_path}, qr/\A\Q$request->{source}\E\//,
+     'research report stays inside the writable source directory');
 like($request->{platform}{build_id}, qr/\A[0-9a-f]{64}\z/,
      'agent received the interpreter build identity');
 is($request->{applied_patches}[0]{sha256}, sha256_hex($existing_text),
@@ -282,6 +323,8 @@ if ($unfixed_receipt) {
        'the no-change result uses one repair call');
     ok($unfixed->{phases}[-1]{unchanged},
        'the receipt marks the repair as unchanged');
+    is($unfixed->{upstream_research}[0]{status}, 'checked',
+       'research alone is retained but does not count as a source repair');
 }
 ok(!-f File::Spec->catfile($prefix, qw(lib perl5 Example Unfixable.pm)),
    'unrepaired module was not installed');

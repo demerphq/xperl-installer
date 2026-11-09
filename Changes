@@ -1,4 +1,7 @@
 Unreleased
+    Ask repair agents to check upstream repositories, issues and pending
+    fixes before editing. Supply release metadata resources and retain
+    research results in receipts, with public links in registry evidence.
     Publish each completed distribution automatically with a Git ports
     registry, including no-change successes and unresolved failures.
     --publish auto|direct|pr|off selects direct pushes or batched fork PRs.

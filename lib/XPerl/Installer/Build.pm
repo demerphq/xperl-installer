@@ -26,6 +26,7 @@ use XPerl::Installer::Platform;
 use XPerl::Installer::Proposal;
 use XPerl::Installer::Publication;
 use XPerl::Installer::Fetch;
+use XPerl::Installer::Upstream;
 
 sub new ($class, %args) {
     die "installation prefix is required\n"
@@ -442,6 +443,8 @@ sub install ($self, $release, %options) {
                 # needs no write access to the installer's work directory.
                 my $response_path = File::Spec->catfile($source,
                                                         ".xperl-repair-$attempt-response.json");
+                my $research_path = File::Spec->catfile($source,
+                    ".xperl-repair-$attempt-upstream.json");
                 my @known_patches;
                 if ($self->{registry}) {
                     my $number = 0;
@@ -477,8 +480,13 @@ sub install ($self, $release, %options) {
                     failed_command => \@command,
                     failed_log => $log,
                     response_path => $response_path,
+                    upstream => XPerl::Installer::Upstream->resources($source),
+                    upstream_research_path => $research_path,
                     recipes => \@recipes,
-                    guidance => 'Do not get stuck in a debug/change loop. '
+                    guidance => 'Check upstream repository issues, pull requests '
+                        . 'and fixes before editing. Record findings in '
+                        . 'upstream_research_path, or explain unavailable access. '
+                        . 'Do not get stuck in a debug/change loop. '
                         . 'If you are not making progress, return '
                         . 'needs_user_action with kind manual_step and tell '
                         . 'the human what you tried and what to inspect.',
@@ -518,6 +526,16 @@ sub install ($self, $release, %options) {
                     command => \@repair_command, request => $request_path,
                     exit_status => $repair_status, log => $repair_log,
                 };
+                # Keep research even when the agent hands the failure back
+                # to a human. A malformed report must not discard a repair.
+                my $research = eval {
+                    XPerl::Installer::Upstream->read_research($research_path);
+                };
+                if (!$research) {
+                    warn "upstream research was not recorded: $@";
+                    $research = { status => 'not_reported', references => [] };
+                }
+                push @{$record->{upstream_research}}, $research;
                 die "repair timed out after $self->{repair_timeout} seconds; see $repair_log\n"
                     if $repair_timed_out;
                 die "repair failed (exit $repair_status); see $repair_log\n"

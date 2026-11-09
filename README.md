@@ -152,8 +152,9 @@ another, for example `model = "claude-opus-5-5"`. Both adapters accept
 `[agents.porter]` can select `provider = "claude"` or `provider = "codex"`.
 
 The provider CLI runs noninteractively in the distribution source directory.
-Codex uses its `workspace-write` sandbox. Claude accepts edits and permits
-its Bash, Read, Edit, Write, Glob, and Grep tools without prompting. Claude
+Codex uses its `workspace-write` sandbox and enables live web search for
+upstream research. Claude accepts edits and permits its Bash, Read, Edit,
+Write, Glob, Grep, WebSearch, and WebFetch tools without prompting. Claude
 has no equivalent write sandbox: its file-editing tools stay within the
 working directories, but Bash can change anything the user can, including
 the installed interpreter and a registry checkout. Claude also loads the
@@ -164,6 +165,22 @@ unattended human handoff. The installer
 supervises timeouts and retries, reruns the builds and tests, and registers
 successful repairs in a configured writable registry. Its normal invocation
 does not require another agent to manage the run.
+
+Before editing, repair agents check the distribution's upstream repository,
+bug reports, pending PRs and relevant recent fixes. The request's `upstream`
+field supplies repository and bug-tracker resources from release metadata.
+Agents verify that a proposed fix matches the failure and the actual Perl
+version and build configuration before adapting it. This investigation is
+read-only. Ordinary installs make no additional upstream requests.
+
+Agents write findings to the request's `upstream_research_path`: schema 1,
+status `checked` or `unavailable`, a `summary`, and a `references` array of
+objects containing HTTP(S) `url` values. A completed search with no useful
+reports uses an empty array. Unavailable access is recorded and local
+diagnosis continues. The receipt keeps the summary; registered repair
+evidence keeps the status and public links. Research files never enter the
+distribution patch. Custom agents that omit this report are recorded as
+`not_reported`, preserving compatibility without claiming a search occurred.
 
 `executable` defaults to the provider's program on `PATH`. Explicit relative
 executable paths, custom commands, and `add_dirs` are relative to the config

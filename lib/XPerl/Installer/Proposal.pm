@@ -37,6 +37,7 @@ sub build_product ($class, $source, $relative) {
 # files behind. Only source-shaped new files enter a portable patch. An entry
 # added to MANIFEST also counts, unless it is a known build product.
 sub patchable_new_file ($class, $source, $relative, $manifest) {
+    return 0 if $relative =~ /\A\.xperl-repair-[0-9]+-(?:response|upstream)\.json\z/;
     return 0 if $class->build_product($source, $relative);
     return 1 if $manifest->{$relative};
     return 0 unless $relative =~ m{\A(?:lib|t|xt|xs|bin|script|inc)/}

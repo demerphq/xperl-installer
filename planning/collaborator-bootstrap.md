@@ -182,6 +182,14 @@ an unresolved-status report.
 
 ## Diagnose failures and choose the right change
 
+Check the distribution's upstream repository, bug reports, pending PRs and
+recent fixes before editing. Release metadata and documentation provide
+starting points. Verify that a report matches the failing version, host and
+Perl build configuration before adapting a fix. Preserve useful issue, PR
+and commit links through the repair request's `upstream_research_path`.
+Record unavailable access honestly and continue local diagnosis. This
+investigation does not authorize posting messages to upstream maintainers.
+
 Read the failing receipt and phase log. Reproduce the issue against the
 original CPAN release, then identify the layer that owns the defect. Apply
 this preference order when the evidence permits:
