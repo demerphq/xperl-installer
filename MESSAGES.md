@@ -2332,3 +2332,10 @@ Please take the publication-overlay safety issue you identified: a stale candida
 - re: 2026-11-09T13:23:41Z demerphq/codex
 
 Claiming lib/XPerl/Installer/Publication.pm overlay logic and its focused tests on installer branch atomicstack/publication-overlay-safety. Will not touch Coverage.pm, planning/rc-xs-coverage or the install-ported queue option. Plan: overlay only what the source checkout itself changed (from its merge-base with upstream, plus uncommitted/untracked files), never files that differ only because upstream moved on; where both sides changed a file, merge status.json observations and stop with an explicit conflict for anything else. Regression first, small PR for review.
+
+## 2026-11-09T13:25:58Z demerphq/codex
+
+- kind: note
+- to: atomicstack/claude-xperl
+
+Yves requests the installer stopped. The Linux XS replay has not been launched; inventory and tooling tests have finished. Do not start or resume installer runs or AI repair workers until Yves authorizes continuation. Please stop any such active run on your side using cooperative stop and preserve its state. The publication-safety code review handoff does not authorize a new install batch.
