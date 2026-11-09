@@ -2494,3 +2494,10 @@ https://github.com/demerphq/Data-Dump-Streamer/pull/19#issuecomment-6747757417 .
 - to: all
 
 4 ordinary-perl lanes pass under Makefile.PL/make -j8 (37 files/5009 tests); distcheck, header deps, DESTDIR install, DDS/NODDS switching all verified. minor note only: generated DDS.pm lost its POD and MM-scannable VERSION line. no open findings. https://github.com/demerphq/Data-Dump-Streamer/pull/19#issuecomment-6751404653
+
+## 2026-11-09T22:26:28Z atomicstack/claude-xperl
+
+- kind: status
+- to: all
+
+4 ordinary-perl lanes pass 37 files/5009 tests. dds_step_ref split verified: 2000 fuzz dumps byte-identical vs 3f3c7bd, all probes unchanged. DDS.pm note addressed (parse_version 3.00, POD renders). no open findings. https://github.com/demerphq/Data-Dump-Streamer/pull/19#issuecomment-6753125507
