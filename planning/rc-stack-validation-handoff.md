@@ -14,11 +14,16 @@ reusable repairs, and record exactly which configurations validated them.
   are `33344c78f5` (XGraph lifetime), `583875fe4a` (dispatch callbacks and
   custom `isa`), and `2e6cc28cfd` (`die`/`PROPAGATE` stack handling).
 - [Installer](https://github.com/demerphq/xperl-installer), branch `main`:
-  `ccd95ee` adds upstream issue/PR research to repair requests and both
+  `23e8a67` adds verified clean-replay recovery for rejected artifacts.
+  `b6dc330` protects newer registry data when a caller checkout is stale.
+  `9198352` keeps agent notes local and out of patches. `3d2cfb7` adds
+  native-source coverage and recorded replay queues. `ccd95ee` adds
+  upstream issue/PR research to repair requests and both
   adapters. `c0ee4bc` publishes completed distributions automatically.
   Built-in Codex/Claude adapters and graceful stop/resume are available.
 - [Ports](https://github.com/demerphq/xperl-cpan-ports), branch `main`:
-  `776d20cb` refreshes the catalog after accepting the fixed-core
+  `746ec035` records the completed native-source RC coverage and coroutine
+  recipe. `776d20cb` refreshes the catalog after accepting the fixed-core
   Devel::Cover patch. `530a368c` records its Linux RC pass. The registry
   includes the Ref::Util::XS provider repair, an unmodified Type::Tiny pass,
   and reconciled Linux receipts. Use the latest main, including subsequent
@@ -64,8 +69,7 @@ Its full suite passed 3,313 files and 1,470,311 tests. The build uses GCC
 13.3.0 on x86_64 Linux, double precision, and no threads, multiplicity,
 debugging, long double or quadmath. These results establish only that profile.
 
-The installed standalone installer passed 587 tests; its final web-tool
-adapter checks passed 116 focused tests. Ref::Util::XS 0.117 passed 481 tests
+The installed standalone installer passed 622 tests. Ref::Util::XS 0.117 passed 481 tests
 in the interpreter's main site library, followed by unmodified Type::Tiny
 2.010001 passing 9,159 tests with acceleration enabled. Devel::Cover 1.52
 passed 86 files and 104 assertions with patch digest
@@ -79,6 +83,29 @@ while reusing modules already available in the RC prefix. Every new result
 was pushed, with no user actions or AI repairs needed. CatalystX::REPL was
 omitted while its DDS chain is deferred, so this is not a complete
 Task::Kensho installation.
+
+The native-source sweep examined 1,525 distributions with recorded Linux
+successes. It identified 217 native candidates and validated 216 on the
+current installed RC build. The remaining candidate is the deferred DDS.
+All 212 distributions selected by the initial replay queue now pass, and
+the saved run finishes with publication pushed and no user actions. The
+follow-up reused registered patches with AI repair disabled. Coverage and
+the empty completed queue are in the ports repository under
+`queues/rc-xs-linux/`.
+
+Coro's repair is in the local `Coro-6.57/` source tree and registered against
+the original CPAN release. All 223 tests pass on ordinary Perl v5.44.0,
+ordinary Perl v5.45.4 with RC stacks and debugging, and RC XPerl v5.45.5.
+The patch uses `PERL_RC_STACK` without requiring XPerl. See the ports recipe
+`refcounted-stack-switch-v1` before adapting stack-switching custom ops.
+
+Three older successful repairs failed registration because their proposals
+included local paths. Clean replays of Overload::FileCheck, Hash::SharedMem
+and Coro are now registered and pushed. Their rejected deliveries are
+superseded with the original receipts retained. Data::Alias's AI call timed
+out after preparing a working fix; a fresh installer replay validated and
+published that preserved source work. No host package installation was
+needed for these repairs.
 
 The shared operational log is `tmp/xperl-rc-stack-install.log` in the
 umbrella workspace. It includes the rebuild, tooling checks and replays.
