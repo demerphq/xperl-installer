@@ -534,7 +534,10 @@ export PERL5LIB="$validation_prefix/lib/perl5:$prefix/lib/perl5"
 `--dry-run` prints the selection and the patch set chosen for the running
 XPerl without building anything; add `--json` for a machine-readable plan.
 `--only AUTHOR/Distribution` and `--exclude AUTHOR/Distribution` restrict
-the run and may be repeated. A run continues after individual failures and
+the run and may be repeated. `--from FILE` adds author/distribution keys from
+a review queue, one per line, with blank lines and `#` comments ignored.
+An empty queue is rejected so it cannot accidentally select every port.
+A run continues after individual failures and
 writes `report.json` and `summary.txt` under `WORKDIR/install-ported/`. The
 report records the platform, XPerl version and configuration, registry
 revision, and for every entry its source identity, recorded and applied
@@ -572,6 +575,24 @@ A second run in the same work directory requires `--resume`. Resuming keeps
 an earlier success only when its receipt still exists and the XPerl binary,
 version, prefix, source hash, and selected patches are unchanged. Earlier
 failures are always rebuilt and never reported as successes.
+
+`planning/rc-xs-coverage` finds native-source distributions with recorded
+successes on the running interpreter's OS and compares their current
+patches with that exact build's validation. Run it with installed RC XPerl:
+
+```sh
+"$rc_perl" planning/rc-xs-coverage --registry ../xperl-cpan-ports \
+    --output ../xperl-cpan-ports/queues/rc-xs-linux \
+    --exclude YVES/Data-Dump-Streamer --exclude RURBAN/B-C
+```
+
+The tool reads the shared cache without downloading or executing sources.
+It writes portable `coverage.json`, a `replay.txt` distribution queue and
+usage notes. Other RC builds remain visible as separate evidence. Missing
+or changed archives are unknown. XS inputs and native Perl API sources mark
+candidates, including optional XS; source presence does not prove that an
+extension was compiled. Reuse the queue unchanged when resuming its run,
+then regenerate coverage after results reach the registry.
 
 Receipts record the platform (operating system, architecture name, compiler,
 make program, thread support, and XPerl commit), so results from different

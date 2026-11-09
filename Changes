@@ -1,4 +1,7 @@
 Unreleased
+    Inventory native-source distributions against the installed interpreter
+    build and current patch digests with planning/rc-xs-coverage. Accept
+    author/distribution review queues through install-ported --from FILE.
     Ask repair agents to check upstream repositories, issues and pending
     fixes before editing. Supply release metadata resources and retain
     research results in receipts, with public links in registry evidence.

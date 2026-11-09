@@ -243,6 +243,36 @@ is_deeply([keys %$other_plan], ['OTHER/Patched'], '--only selects one entry');
 ok(!defined $other_plan->{'OTHER/Patched'}{patch_set},
    'another author\'s release does not use EXAMPLE\'s patch');
 
+# A saved review queue selects distribution identities, including authors.
+my $queue = File::Spec->catfile($root, 'replay.txt');
+open my $queue_file, '>', $queue or die $!;
+print {$queue_file} "# Review queue\n\nOTHER/Patched # portable fix\nEXAMPLE/Base\n";
+close $queue_file or die $!;
+($status, $output) = xperl('install-ported', common($prefix, $workdir),
+                           '--dry-run', '--json', '--from', $queue);
+is($status, 0, 'install-ported accepts a distribution review queue');
+my $queue_plan = by_key(eval { JSON::PP->new->decode($output) } // {});
+is_deeply([sort keys %$queue_plan], ['EXAMPLE/Base', 'OTHER/Patched'],
+          'queue comments and blank lines do not alter selected identities');
+
+# An exhausted queue must never mean rebuild the entire registry.
+open $queue_file, '>', $queue or die $!;
+print {$queue_file} "# All candidates completed\n";
+close $queue_file or die $!;
+my $queue_error = File::Spec->catfile($root, 'empty-queue.log');
+open my $saved_stderr, '>&', \*STDERR or die $!;
+open STDERR, '>', $queue_error or die $!;
+($status, $output) = xperl('install-ported', common($prefix, $workdir),
+                           '--dry-run', '--json', '--from', $queue);
+open STDERR, '>&', $saved_stderr or die $!;
+close $saved_stderr or die $!;
+isnt($status, 0, 'an empty distribution queue is rejected');
+open my $error_file, '<', $queue_error or die $!;
+my $error = do { local $/; <$error_file> };
+close $error_file or die $!;
+like($error, qr/contains no distribution keys/,
+     'the error explains the empty queue instead of selecting every port');
+
 # --- full run ------------------------------------------------------------
 ($status, $output) = xperl('install-ported', common($prefix, $workdir),
                            '--jobs', 1, '--json');

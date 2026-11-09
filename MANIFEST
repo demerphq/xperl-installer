@@ -9,6 +9,7 @@ lib/XPerl/Installer.pm
 lib/XPerl/Installer/Agent.pm
 lib/XPerl/Installer/Build.pm
 lib/XPerl/Installer/Config.pm
+lib/XPerl/Installer/Coverage.pm
 lib/XPerl/Installer/Deps.pm
 lib/XPerl/Installer/Fetch.pm
 lib/XPerl/Installer/Impact.pm
@@ -29,6 +30,7 @@ planning/kensho-rc-split/codex.txt
 planning/kensho-rc-split/manifest.json
 planning/perldev-AGENTS.md
 planning/rc-stack-validation-handoff.md
+planning/rc-xs-coverage
 planning/split-kensho
 planning/xperl-package-manager.md
 planning/xpw
@@ -36,6 +38,7 @@ t/agent.t
 t/build.t
 t/build_pl.t
 t/config.t
+t/coverage.t
 t/deps.t
 t/environment.t
 t/fetch.t

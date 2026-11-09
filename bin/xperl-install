@@ -44,7 +44,7 @@ Usage: xperl-install resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Mo
                      [--native-prefix DIR]... [--no-native-prefix]
                      [--layout auto|site|install_base]
                      [--publish auto|direct|pr|off]
-                     [--only AUTHOR/Dist]... [--exclude AUTHOR/Dist]...
+                     [--only AUTHOR/Dist]... [--exclude AUTHOR/Dist]... [--from FILE]
                      [--agent NAME | --repair-command PATH]
                      [--repair-jobs K]
                      [--repair-interval SECONDS]
@@ -155,13 +155,22 @@ my $selected_command = $repair_command;
 
 my @modules = @ARGV;
 if (defined $from) {
-    die "--from is only valid with install\n" unless $action eq 'install';
+    die "--from is only valid with install or install-ported\n"
+        unless $action eq 'install' || $action eq 'install-ported';
     open my $list, '<', $from or die "cannot read $from: $!\n";
     while (my $line = <$list>) {
         $line =~ s/#.*//s;
         $line =~ s/\A\s+|\s+\z//g;
-        push @modules, $line if length $line;
+        next unless length $line;
+        if ($action eq 'install-ported') {
+            push @only, $line;
+        }
+        else {
+            push @modules, $line;
+        }
     }
+    die "--from $from contains no distribution keys\n"
+        if $action eq 'install-ported' && !@only;
 }
 if ($action eq 'install' && $resume) {
     die "install --resume needs --workdir and no module list\n"
