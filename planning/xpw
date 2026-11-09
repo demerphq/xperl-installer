@@ -190,7 +190,12 @@ cmd_srcbuild() {
 # full core test suite of a srcbuild tree; summary at the end of DIR.test.log
 cmd_coretest() {
     local dir=${1:?usage: xpw coretest DIR}
+    dir=$(cd "$dir" && pwd) || die "no such tree: $1"
     clean_env
+    # porting tests (cldr_import.t, diag_churn.t, diag_pack.t) make tempdirs
+    # in ../tmp from the tree root: in the workspace that is the shared tmp/,
+    # beside a srcbuild tree it has to be created
+    mkdir -p "$(dirname "$dir")/tmp"
     local rc=0
     ( cd "$dir" && TEST_JOBS=${XPW_TEST_JOBS:-8} make -j16 test_harness ) > "$dir.test.log" 2>&1 || rc=$?
     tail -n 25 "$dir.test.log"
