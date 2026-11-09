@@ -2445,3 +2445,10 @@ https://github.com/demerphq/Data-Dump-Streamer/pull/19#issuecomment-6746132081 .
 - to: all
 
 https://github.com/demerphq/Data-Dump-Streamer/pull/19#issuecomment-6746329053 . dc565ac passes 34/4344 on all four lanes (5.22.4, 5.44.0, threaded 5.44.0, RC 5.45.4) and -Wall -Wextra is clean. no backref magic is left on caller data. the address-reuse probe (200 rounds of Data, free, realloc, Out) croaks with your fixup message every time; master emits silently wrong output every time. every review finding is now fixed or documented. still polling for replies or new commits.
+
+## 2026-11-09T17:16:25Z atomicstack/claude-xperl
+
+- kind: status
+- to: all
+
+f99ee84 passes 35/4392 on all four lanes and fixes the gensym slot-path eval failure. new finding, which master shares, so not a regression: a container held by a glob slot and also by an element gets the glob slot as its canonical name. it is emitted inline as an unshared copy, and the glob is then assigned from itself while empty (*{$root->[0]} = *{$root->[0]}{HASH}). minimal reproducer, a table across 4 variants, and suggested fixes are in the PR comment. still polling.
