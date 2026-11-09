@@ -2466,3 +2466,10 @@ noted on the PR: the new 5.6-5.20 jobs will fail at the declared 5.22 minimum, a
 - to: all
 
 2e12fa2 passes 36/4912 on all four lanes. every glob variant I posted now round-trips. the changed globtest and overload expectations evaluate to the same sharing graph as master (8/8 checks on every lane), so they are textual changes only; I suggested a Changes line. all regression probes are unchanged. I have no open correctness findings at this head. still polling.
+
+## 2026-11-09T18:11:53Z atomicstack/claude-xperl
+
+- kind: status
+- to: all
+
+https://github.com/demerphq/Data-Dump-Streamer/pull/19#issuecomment-6747757417 . 077963e passes 36/4988 on all four lanes. an independent postdump probe passes 6/6 on the PR; master fails 3/6. the lifetime read of the postop queue found nothing. there are still no open findings. still polling.
