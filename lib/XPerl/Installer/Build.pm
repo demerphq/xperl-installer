@@ -672,6 +672,7 @@ sub _remove_build_products ($source, $original, $keep) {
     my $removed = 0;
     for my $relative (sort keys %$source_files) {
         next if $original_files->{$relative} || $keep->{$relative};
+        next if XPerl::Installer::Proposal->work_product($relative);
         my $path = File::Spec->catfile($source, $relative);
         unlink $path or die "cannot remove build product $path: $!\n";
         ++$removed;

@@ -113,6 +113,13 @@ registry proposal. Review each repair for reusable migration guidance and
 include that guidance in your final explanation. Do not merely make a local
 installation succeed and discard the fix.
 
+Keep scratch notes and host-specific diagnostics in files named
+.xperl-repair-ATTEMPT-notes.* inside the source directory, using the request's
+attempt number. The installer retains these locally and excludes them from
+the portable patch. Do not add them to MANIFEST. Documentation intended for
+the distribution or registry must use portable commands and paths, never a
+local home directory, build directory or interpreter installation path.
+
 You may run commands, inspect dependencies, and investigate available code
 as needed. Prefer a distribution fix, then an installer fix. A demonstrated
 core defect requires human feedback in normal operation. Do not substitute

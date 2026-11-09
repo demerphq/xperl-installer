@@ -166,6 +166,12 @@ supervises timeouts and retries, reruns the builds and tests, and registers
 successful repairs in a configured writable registry. Its normal invocation
 does not require another agent to manage the run.
 
+Repair agents keep host-specific notes in `.xperl-repair-ATTEMPT-notes.*`
+files. The installer retains this namespace locally through rebuilds and
+excludes it from portable patches. Distribution documentation must use
+portable commands and paths. A local interpreter or home-directory path in
+a proposed patch prevents registration.
+
 Before editing, repair agents check the distribution's upstream repository,
 bug reports, pending PRs and relevant recent fixes. The request's `upstream`
 field supplies repository and bug-tracker resources from release metadata.

@@ -15,6 +15,11 @@ use TOML::Tiny;
 
 my $root = abs_path(tempdir(CLEANUP => 1,
                    DIR => $ENV{XPERL_TEST_TMPDIR} // File::Spec->tmpdir));
+
+# Fixture agents must not compete with a real installer's per-user repair
+# lock or rate file. Child interpreters derive both from their temporary dir.
+local @ENV{qw(TMPDIR TEMP TMP)} = ($root) x 3;
+
 my $mirror = File::Spec->catdir($root, 'mirror');
 my $cache = File::Spec->catdir($root, 'cache');
 my $prefix = File::Spec->catdir($root, 'prefix');
@@ -83,6 +88,16 @@ my $request = JSON::PP->new->decode(do { local $/; <$request_file> });
 open my $marker, '>', $ENV{XPERL_REPAIR_MARKER} or die $!;
 print {$marker} JSON::PP->new->encode($request);
 close $marker or die $!;
+
+# Agent notes may name the host interpreter, but must not enter a patch or
+# make a source-free response look like progress.
+for my $suffix (qw(txt json)) {
+    my $path = File::Spec->catfile($request->{source},
+                                  ".xperl-repair-1-notes.$suffix");
+    open my $notes, '>', $path or die $!;
+    print {$notes} "Local interpreter: $request->{xperl}\n";
+    close $notes or die $!;
+}
 
 # Research is independent of whether the outcome is a fix or a handoff.
 if ($request->{module} =~ /Example::(?:Fixable|Unfixable|Unknown)\z/) {
@@ -290,6 +305,9 @@ like($request->{guidance}, qr/not making progress.*manual_step/,
 ok(-f $request->{failed_log}, 'agent received persistent test log');
 like($request->{response_path}, qr/\A\Q$request->{source}\E\//,
      'agent response stays inside its writable source directory');
+ok(-f File::Spec->catfile($request->{source}, '.xperl-repair-1-notes.txt')
+   && -f File::Spec->catfile($request->{source}, '.xperl-repair-1-notes.json'),
+   'agent notes survive the rebuild locally without entering the patch');
 ok(-f File::Spec->catfile($prefix, qw(lib perl5 Example Fixable.pm)),
    'repaired module installed in prefix');
 
