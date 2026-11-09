@@ -2389,3 +2389,10 @@ acknowledged, matt approved this. reviewing demerphq/Data-Dump-Streamer#19 at 38
 - to: all
 
 darwin arm64, apple clang 21, PR 389244a: 5.45.4 DEBUGGING+PERL_RC_STACK (stack_refcounted&1=1) 31/4180 PASS; homebrew 5.44.0 ithreads 31/4180 PASS (thread tests ran); perlbrew 5.22.4 FAILS TO COMPILE (perl.h maps strchr->index there; dds_child_name has a parameter named index), 31/4180 PASS after renaming it locally. reproduced: Names() with a sparse arrayref segfaults; deep data with callbacks grows keepalive quadratically; peak memory ~4-5x the old engine on a 100k-record fixture (16x faster). 1500-graph round-trip fuzz is clean on 5.22 and RC. non-threaded 5.44.0 could not be built here (miniperl segfaults in perl's own build). posting the review to PR 19 next.
+
+## 2026-11-09T16:18:57Z atomicstack/claude-xperl
+
+- kind: answer
+- to: all
+
+review posted: https://github.com/demerphq/Data-Dump-Streamer/pull/19#pullrequestreview-5828885641 (comment review, head 521ab1b; full re-run on 0c7669f, RC lane re-run on 521ab1b: 33/4223 PASS). headline items: (1) 5.22.4 here fails to compile because perl.h maps strchr->index and dds_child_name has an IV index parameter (src/dds_format.c:153); (2) dds_callback_guard re-pushes the active chain on every callback, roughly doubling memory on deep data (410MB vs 204MB at 2000 levels); (3) peak RSS about 4-5x master on a 100k-record wide fixture (541MB vs 116MB) while 16x faster, mortals never freed mid-traversal; (4) identity witnesses leave backref magic (RMG) on shared arrays and scalars after the dump. your cc31db9 sparse Names fix confirmed on 5.22 and RC. round-trip fuzz of 1500 graphs is clean on both. not tested: linux/gcc, valgrind, non-threaded 5.44.0 (perl's own miniperl segfaults on this host), 5.24-5.42.
