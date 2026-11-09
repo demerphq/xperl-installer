@@ -110,6 +110,48 @@ sub complete ($self, $builder, $release, $receipt) {
     return $self->_try_publish($builder, $path);
 }
 
+# A clean replay can replace a successful build whose repair could not be
+# registered. Keep the original receipt and queued intent for diagnosis,
+# but require a published, registered replacement before retiring delivery.
+sub supersede ($self, $receipt, $replacement) {
+    my $old = _read_json($receipt);
+    my $new = _read_json($replacement);
+    die "supersession requires an installed repair with failed registration\n"
+        unless ($old->{status} // '') eq 'installed'
+            && ($old->{registration}{status} // '') eq 'failed';
+    die "replacement repair is not installed and registered\n"
+        unless ($new->{status} // '') eq 'installed'
+            && ($new->{registration}{status} // '') eq 'registered';
+    for my $field (qw(cpan_path source_sha256 xperl_version)) {
+        die "replacement differs in $field\n"
+            unless defined($old->{$field}) && defined($new->{$field})
+                && $old->{$field} eq $new->{$field};
+    }
+    die "replacement uses a different interpreter build\n"
+        unless defined($old->{platform}{build_id})
+            && ($old->{platform}{build_id} // '') eq ($new->{platform}{build_id} // '')
+            && ($old->{platform}{key} // '') eq ($new->{platform}{key} // '');
+    my $proof = _read_json(File::Spec->catfile(dirname($replacement), 'publication.json'));
+    die "replacement repair has not been published\n"
+        unless ($proof->{status} // '') =~ /\A(?:pushed|unchanged)\z/;
+
+    my $id = sha256_hex($old->{cpan_path} . "\0" . $receipt);
+    my $pending = File::Spec->catfile($self->{base}, 'pending', "$id.json");
+    my $archive = File::Spec->catdir($self->{base}, 'superseded');
+    make_path($archive);
+    my $saved = -f $pending ? _read_json($pending) : { receipt => $receipt };
+    my $state = { status => 'superseded', replacement_receipt => $replacement,
+                  reason => 'replaced by a published clean repair replay' };
+    _write_json(File::Spec->catfile($archive, "$id.json"), {
+        %$saved, %$state,
+    });
+    _write_json(File::Spec->catfile(dirname($receipt), 'publication.json'), $state);
+    if (-f $pending) {
+        unlink $pending or die "cannot retire superseded publication: $!\n";
+    }
+    return $state;
+}
+
 sub retry ($self, $builder) {
     my $directory = File::Spec->catdir($self->{base}, 'pending');
     return [] unless -d $directory;
@@ -122,6 +164,14 @@ sub retry ($self, $builder) {
 
 sub _try_publish ($self, $builder, $path) {
     my $queued = _read_json($path);
+    my $state = File::Spec->catfile(dirname($queued->{receipt}), 'publication.json');
+    if (-f $state) {
+        my $saved = eval { _read_json($state) };
+        if ($saved && ($saved->{status} // '') eq 'superseded') {
+            unlink $path or die "cannot clear superseded publication: $!\n";
+            return $saved;
+        }
+    }
     my $result = eval {
         die $self->{setup_error} if $self->{setup_error};
         my $published = $self->_publish_one($builder, $path);
@@ -349,7 +399,7 @@ sub _recover_receipts ($self, $builder) {
             my $state = File::Spec->catfile(dirname($path), 'publication.json');
             if (-f $state) {
                 my $saved = _read_json($state);
-                return if ($saved->{status} // '') =~ /\A(?:pushed|unchanged|batched)\z/;
+                return if ($saved->{status} // '') =~ /\A(?:pushed|unchanged|batched|superseded)\z/;
             }
             my $record = _read_json($path);
             return unless ($record->{status} // '') =~ /\A(?:installed|failed)\z/;
@@ -635,6 +685,15 @@ file changed on both sides is refused.
 Queue an immutable completed receipt and attempt to publish it. Returns a
 separate publication status. Transport failures retain the queue and do not
 change the build result.
+
+=head2 supersede
+
+Retire delivery of an installed repair whose registration failed after a
+clean replay has been installed, registered and published. The replacement
+must use the same CPAN archive, source digest, XPerl version and interpreter
+build. Keep the original receipt unchanged, archive its queued intent, and
+record a durable pointer to the replacement. Recovery does not requeue the
+rejected artifact. This is an explicit maintainer recovery operation.
 
 =head2 finish
 

@@ -424,4 +424,50 @@ ok(!eval { XPerl::Installer::Publication->prepare($conflict_builder); 1 },
    'a non-status file changed on both sides is refused');
 like($@, qr/\Q$notes\E/, 'the refusal names the conflicting file');
 
+# A clean replay may replace a repair rejected during registration. Retire
+# only delivery, retaining the original receipt and queued work for audit.
+my $old_dir = "$root/hook-work/old-registration";
+my $new_dir = "$root/replayed-registration";
+make_path($old_dir, $new_dir);
+my $old_receipt = "$old_dir/receipt.json";
+my $new_receipt = "$new_dir/receipt.json";
+my $old_record = XPerl::Installer::Publication::_read_json($built->{receipt});
+$old_record->{registration} = { status => 'failed', reason => 'local path in patch' };
+my $new_record = { %$old_record, registration => { status => 'registered' } };
+write_file($old_receipt, $json->encode($old_record));
+write_file($new_receipt, $json->encode($new_record));
+write_file("$new_dir/publication.json", $json->encode({ status => 'pending' }));
+my $publication = $hook_builder->{publication};
+my $queued = $publication->enqueue($old_record, $old_receipt);
+ok(!eval { $publication->supersede($old_receipt, $new_receipt); 1 },
+   'an unpublished replacement cannot retire a failed registration');
+ok(-f $queued, 'an unsuccessful replacement leaves delivery queued');
+
+write_file("$new_dir/publication.json", $json->encode({ status => 'pushed' }));
+$new_record->{source_sha256} = 'different';
+write_file($new_receipt, $json->encode($new_record));
+ok(!eval { $publication->supersede($old_receipt, $new_receipt); 1 },
+   'a different source cannot replace the queued repair');
+$new_record->{source_sha256} = $old_record->{source_sha256};
+$new_record->{platform} = { %{$old_record->{platform}}, build_id => 'different-build' };
+write_file($new_receipt, $json->encode($new_record));
+ok(!eval { $publication->supersede($old_receipt, $new_receipt); 1 },
+   'a different interpreter build cannot replace the queued repair');
+$new_record->{platform} = $old_record->{platform};
+write_file($new_receipt, $json->encode($new_record));
+my $before = capture($root, 'cat', $old_receipt);
+is($publication->supersede($old_receipt, $new_receipt)->{status}, 'superseded',
+   'a published registered replay retires the earlier delivery');
+is(capture($root, 'cat', $old_receipt), $before, 'the original receipt stays unchanged');
+ok(!-f $queued, 'the retired item no longer blocks publication');
+$publication->_recover_receipts($hook_builder);
+ok(!-f $queued, 'receipt recovery does not requeue the superseded repair');
+
+# Recover an interruption after saving the replacement pointer but before
+# removing the queued item, without republishing the rejected artifact.
+$publication->enqueue($old_record, $old_receipt);
+is($publication->_try_publish($hook_builder, $queued)->{status}, 'superseded',
+   'retry recognizes a durable supersession marker');
+ok(!-f $queued, 'retry clears the stale queue item');
+
 done_testing();

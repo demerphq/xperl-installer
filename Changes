@@ -1,4 +1,6 @@
 Unreleased
+    Allow a published clean replay to supersede an installed repair whose
+    registration failed, retaining the original receipt and queued intent.
     Keep agent notes and protocol files local instead of adding them to
     source patches. Isolate fixture repair locks from live installer runs.
     Inventory native-source distributions against the installed interpreter
