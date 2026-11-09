@@ -4,6 +4,11 @@ Unreleased
     Inventory native-source distributions against the installed interpreter
     build and current patch digests with planning/rc-xs-coverage. Accept
     author/distribution review queues through install-ported --from FILE.
+    Publication overlays only the registry checkout's own changes since its
+    merge base with upstream. A checkout older than upstream no longer
+    deletes or replaces newer published data; a status record changed on
+    both sides is merged and any other file changed on both sides stops
+    publication with the file named.
     Ask repair agents to check upstream repositories, issues and pending
     fixes before editing. Supply release metadata resources and retain
     research results in receipts, with public links in registry evidence.

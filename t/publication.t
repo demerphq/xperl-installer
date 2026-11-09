@@ -350,4 +350,78 @@ my $recovered = XPerl::Installer::Publication::_read_json(
     File::Spec->catfile(dirname($built->{receipt}), 'publication.json'));
 is($recovered->{status}, 'unchanged', 'recovery imports the receipt without rebuilding or duplicating facts');
 
+# A caller checkout can be older than upstream, e.g. a candidate branch made
+# before other results were published. Only the caller's own changes may be
+# overlaid: newer upstream data must survive, and a file both sides changed
+# is merged (status observations) or refused, never silently replaced.
+sub status_record ($distribution, @ids) {
+    return $json->encode({ schema => 2, author => 'EXAMPLE',
+        distribution => $distribution,
+        observations => [map { { id => $_, status => 'installed' } } @ids] });
+}
+my $stale = "$root/stale";
+run($root, 'git', 'clone', '--quiet', '--branch', 'main', $remote, $stale);
+run($stale, 'git', 'config', 'user.name', 'Stale fixture');
+run($stale, 'git', 'config', 'user.email', 'stale@example.invalid');
+run($stale, 'git', 'config', 'commit.gpgsign', 'false');
+my $shared = 'data/aa/EXAMPLE/Example-Shared/status.json';
+my $notes = 'data/aa/EXAMPLE/Example-Shared/index.json';
+make_path(dirname("$stale/$shared"));
+write_file("$stale/$shared", status_record('Example-Shared', 'base-result'));
+write_file("$stale/$notes", qq({"note":"base"}\n));
+run($stale, 'git', 'add', '--', $shared, $notes);
+run($stale, 'git-compose-commit', '--subject', 'Add shared fixture', '--', $shared, $notes);
+run($stale, 'git', 'push', '--quiet', 'origin', 'main');
+run($stale, 'git', 'switch', '--quiet', '-c', 'candidate');
+my $repair = 'data/bb/EXAMPLE/Example-Repair/index.json';
+make_path(dirname("$stale/$repair"));
+write_file("$stale/$repair", qq({"repair":"local"}\n));
+run($stale, 'git', 'add', '--', $repair);
+run($stale, 'git-compose-commit', '--subject', 'Add a local repair', '--', $repair);
+write_file("$stale/$shared", status_record('Example-Shared', 'base-result', 'local-result'));
+
+run($peer, 'git', 'pull', '--quiet', '--ff-only', 'origin', 'main');
+my $upstream_only = 'data/cc/EXAMPLE/Example-Upstream/status.json';
+make_path(dirname("$peer/$upstream_only"));
+write_file("$peer/$upstream_only", status_record('Example-Upstream', 'upstream-result'));
+make_path(dirname("$peer/$shared"));
+write_file("$peer/$shared", status_record('Example-Shared', 'base-result', 'newer-result'));
+run($peer, 'git', 'add', '--', $upstream_only, $shared);
+run($peer, 'git-compose-commit', '--subject', 'Publish newer results',
+    '--', $upstream_only, $shared);
+run($peer, 'git', 'push', '--quiet', 'origin', 'main');
+run($stale, 'git', 'fetch', '--quiet', 'origin');
+
+my $stale_builder = XPerl::Installer::Build->new(
+    prefix => "$root/stale-prefix", workdir => "$root/stale-work",
+    registry => XPerl::Installer::Registry->new(path => $stale),
+);
+my $overlaid = XPerl::Installer::Publication->prepare($stale_builder);
+ok($overlaid, 'a candidate checkout behind upstream can still publish');
+my $overlay_checkout = $overlaid->{checkout};
+ok(-f "$overlay_checkout/$upstream_only",
+   'a newer upstream-only result is not deleted by a stale checkout');
+is_deeply([map { $_->{id} } @{$json->decode(
+              capture($overlay_checkout, 'cat', $shared))->{observations}}],
+          [qw(base-result newer-result local-result)],
+          'a status record changed on both sides keeps every observation');
+is(capture($overlay_checkout, 'cat', $repair), '{"repair":"local"}',
+   'the local repair overlay is preserved');
+is(capture($overlay_checkout, 'cat', $notes), '{"note":"base"}',
+   'an unchanged file keeps the upstream content');
+
+run($peer, 'git', 'pull', '--quiet', '--ff-only', 'origin', 'main');
+write_file("$peer/$notes", qq({"note":"upstream"}\n));
+run($peer, 'git-compose-commit', '--subject', 'Change notes upstream', '--', $notes);
+run($peer, 'git', 'push', '--quiet', 'origin', 'main');
+run($stale, 'git', 'fetch', '--quiet', 'origin');
+write_file("$stale/$notes", qq({"note":"local"}\n));
+my $conflict_builder = XPerl::Installer::Build->new(
+    prefix => "$root/conflict-prefix", workdir => "$root/conflict-work",
+    registry => XPerl::Installer::Registry->new(path => $stale),
+);
+ok(!eval { XPerl::Installer::Publication->prepare($conflict_builder); 1 },
+   'a non-status file changed on both sides is refused');
+like($@, qr/\Q$notes\E/, 'the refusal names the conflicting file');
+
 done_testing();

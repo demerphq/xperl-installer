@@ -7,6 +7,7 @@ use Cwd qw(abs_path);
 use Digest::SHA qw(sha256_hex);
 use Fcntl qw(:flock);
 use File::Basename qw(dirname);
+use File::Compare ();
 use File::Copy qw(copy);
 use File::Find ();
 use File::Path qw(make_path);
@@ -142,20 +143,40 @@ sub _save_config ($self) {
     });
 }
 
+# Carry the caller's own registry work (e.g. a prepared repair) into the
+# publication checkout. Local work is measured from the merge base with
+# upstream, so a checkout that is merely older than upstream contributes
+# nothing for files only upstream changed. A file both sides changed is
+# merged when it is a status record and refused otherwise.
 sub _overlay ($self, $builder) {
+    my @scope = ('--', 'data', 'recipes', 'registry.json');
+    my ($base_status, $base) = $self->_git_at($builder, $self->{source},
+        'merge-base', 'HEAD', $self->{initial_ref});
+    die "registry checkout shares no history with the ports upstream\n"
+        if $base_status;
+    $base = _line($base);
     my $changed = $self->_must($builder, $self->{source}, 'git',
-        'diff', '--name-only', '-z', $self->{initial_ref},
-        '--', 'data', 'recipes', 'registry.json');
+        'diff', '--name-only', '--no-renames', '-z', $base, @scope);
     my $untracked = $self->_must($builder, $self->{source}, 'git',
-        'ls-files', '--others', '--exclude-standard', '-z',
-        '--', 'data', 'recipes', 'registry.json');
+        'ls-files', '--others', '--exclude-standard', '-z', @scope);
+    my %upstream = map { $_ => 1 } grep { length } split /\0/,
+        $self->_must($builder, $self->{source}, 'git', 'diff', '--name-only',
+                     '--no-renames', '-z', $base, $self->{initial_ref}, @scope);
     my %seen;
     for my $relative (grep { length && !$seen{$_}++ }
                       split /\0/, $changed . $untracked) {
         my $from = File::Spec->catfile($self->{source}, $relative);
         my $to = File::Spec->catfile($self->{checkout}, $relative);
         die "cannot publish a symlink overlay: $relative\n" if -l $from;
-        if (-f $from) {
+        if ($upstream{$relative}) {
+            next if _same_file($from, $to);
+            die "registry overlay conflicts with newer upstream data: $relative; "
+                . "update the registry checkout and retry\n"
+                unless -f $from && -f $to && $relative =~ m{\Adata/.+/status\.json\z};
+            _write_json($to, _merge_observations($relative,
+                _read_json($to), _read_json($from)));
+        }
+        elsif (-f $from) {
             make_path(dirname($to));
             copy($from, $to) or die "cannot copy registry overlay $relative: $!\n";
         }
@@ -163,6 +184,11 @@ sub _overlay ($self, $builder) {
             unlink $to or die "cannot remove deleted overlay $relative: $!\n";
         }
     }
+}
+
+sub _same_file ($left, $right) {
+    return !-e $left && !-e $right unless -f $left && -f $right;
+    return File::Compare::compare($left, $right) == 0;
 }
 
 sub _publish_one ($self, $builder, $queue_path) {
@@ -491,6 +517,13 @@ sub _merge_status ($self, $builder, $directory, $path) {
                                          'git', 'show', ":2:$path"));
     my $right = $JSON->decode($self->_must($builder, $directory,
                                           'git', 'show', ":3:$path"));
+    _write_json(File::Spec->catfile($directory, $path),
+                _merge_observations($path, $left, $right));
+}
+
+# Union two copies of a status record by observation id, keeping the first
+# copy's order. Differing metadata or one id with two contents needs review.
+sub _merge_observations ($path, $left, $right) {
     my (%left_meta, %right_meta);
     %left_meta = %$left;
     %right_meta = %$right;
@@ -512,7 +545,7 @@ sub _merge_status ($self, $builder, $directory, $path) {
         push @observations, $observation;
     }
     $left->{observations} = \@observations;
-    _write_json(File::Spec->catfile($directory, $path), $left);
+    return $left;
 }
 
 sub _git ($self, $builder, @args) {
@@ -591,6 +624,11 @@ Create or reopen publication state for a builder. Returns no publisher for
 a registry that is not a Git checkout. The caller's checkout and index are
 not mutated. The builder must use the publisher's C<registry> for subsequent
 patch lookup and repair registration.
+Uncommitted or branch-only registry changes in the caller's checkout are
+carried into the publication checkout. Only changes since the merge base
+with upstream count, so newer upstream data is never reverted; a status
+record changed on both sides is merged by observation id, and any other
+file changed on both sides is refused.
 
 =head2 complete
 
