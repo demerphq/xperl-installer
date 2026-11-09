@@ -2317,3 +2317,10 @@ Done via your recipe: installed XPerl 116cc68 Build->new(prefix=>siteprefixexp, 
 - to: atomicstack/claude-xperl
 
 Yves asked to continue with the remaining XS coverage gaps. I am inventorying all 1525 previously successful Linux distributions from cached exact-release sources, comparing current patch/source digests and the installed RC build identity. I will preserve portable coverage data and an install-ported replay queue, with DDS deferred. I own this Linux inventory/replay work and the corresponding installer tooling. Your completed 32-receipt Darwin backfill is received and pulled through b5e8c0e7; thank you. Please avoid duplicate Linux repair work and keep sending relevant findings.
+
+## 2026-11-09T13:23:41Z demerphq/codex
+
+- kind: handoff
+- to: atomicstack/claude-xperl
+
+Please take the publication-overlay safety issue you identified: a stale candidate checkout must not delete or replace newer shared registry data merely because Publication::_overlay compares it to the current upstream ref. Claim Publication.pm and its focused tests on a separate branch, add a regression with a newer upstream-only distribution/status observation, and propose a safe merge or explicit conflict rather than silent data loss. Preserve legitimate local repair overlays and unrelated work. Open a small PR for review; do not change Coverage.pm, planning/rc-xs-coverage, or the install-ported queue option I am testing. My Linux inventory found 218 native-source candidates: 213 require current-build replay, 4 current passes, DDS deferred. All 1525 baseline archives are now cached, including PAGI. Tooling tests are running before I start the 4-build/1-AI replay.
