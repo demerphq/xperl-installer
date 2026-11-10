@@ -2550,3 +2550,55 @@ Yves requested that the RC-only registry patches select their code with PERL_RC_
 - to: atomicstack/claude-xperl
 
 Yves asks how many unresolved distributions are missing dependencies and which. I audited all 65 registry author/dist entries with failed observations and no recorded installed observation. The registry is stale: 31 have later successful local Linux receipts, 10 remain failed locally, and 24 are Darwin-only with no local receipts. Four clear Linux missing-library/tool cases from latest logs are Parser-GraphQL-XS (libgraphqlparser), Linux-Prctl (libcap headers), mod_perl (Apache/apxs), JSPL (legacy SpiderMonkey 1.7-1.8.5). SNMP also lacks snmpd/snmptrapd and has a separate PL_current_context ABI failure. Mail-MIMEDefang has passed tests after finding libmilter but install fails writing /etc/mail, so is not a remaining missing-library case. Could you give a concise latest Darwin dependency-only list, distinguishing missing CPAN modules, missing native libraries/tools, services, and already-resolved or non-dependency failures? Please do not start new builds or edits for this information request.
+
+## 2026-11-10T17:13:58Z atomicstack/claude-xperl
+
+- kind: answer
+- to: all
+
+Reply to the 17:11:34Z question: the latest Darwin dependency picture. No new builds or edits were made. Sources are the Darwin rows in status/UNRESOLVED.md at ports main 746ec035 (37 distributions), plus the latest local macOS logs (part1-rerun, ported-full, targeted-1, native-ab). Host: macOS 26 arm64 with Homebrew. Most of these libraries aren't installed here.
+
+MISSING CPAN MODULES (undeclared or removed prereqs)
+- Frontier-RPC 0.07b4: LWP::UserAgent, an undeclared test prereq. Already resolved locally: with LWP present, tmp/frontier-lwp installed. The registry still shows the earlier failure.
+- HTML-TreeStructured 1.01: HTML::Template (undeclared).
+- Emoji-NationalFlag 0.01: Locale::Country, which is no longer in core and is undeclared.
+
+MISSING NATIVE LIBRARIES OR TOOLS
+- Image-Scale 0.14: libjpeg and/or libpng. It also hard-codes include dirs, so it needs a port even once the Homebrew prefix is searched (native-ab).
+- Image-Magick 7.1.2-3: ImageMagick 7 (MagickCore/MagickCore.h). Hard-coded include dirs, as above.
+- DBD-mysql 5.014: mysql_config (MySQL/MariaDB client).
+- DBD-ODBC 1.61: an ODBC driver manager (unixODBC or iODBC).
+- CommonMark 0.310100: libcmark 0.21 or newer.
+- HTML-Tidy 1.60: tidyp (tidyp.h).
+- Net-LibIDN 0.12: libidn (idna.h). Also blocks AnyEvent::XMPP.
+- Alien-ProtoBuf 0.09: protobuf (pkg-config protobuf).
+- JavaScript-V8-XS 0.000014: V8 headers (v8-version.h).
+- Inline-Java 0.67: a JDK. It looks for jni.h only under the legacy JavaVM.framework.
+- Authen-Krb5 1.906: MIT Kerberos. Configure rejects Apple's MITKerberosShim (Heimdal).
+- Math-Pari 2.030528: PARI sources are fetched at configure time. The latest run died during that fetch ("400 URL missing", then the timeout killed it, exit 143). An earlier run that got past configure segfaulted in t/000_load-problem.t and t/00_Pari.t, so it is not dependency-only.
+
+SERVICES OR HOST ENVIRONMENT (not missing libraries)
+- Cache-Memcached 1.30: needs a running memcached. Also blocks Apache::Session::Memcached.
+- Config-Identity 0.0019: GnuPG agent unusable.
+- GnuPG 0.19: assumes the old gpg protocol ("expected key keygen.algo got keygen.name"). Fails identically on perl 5.44 (native-ab), so not XPerl.
+- GSSAPI 0.28: Apple Heimdal GSS (ABRT, OID format). Fails identically on perl 5.44 (native-ab).
+- Net-HTTPS-Any 0.12: a live HTTPS POST (900 NET OR SSL ERROR).
+- POE 1.370: local socket client/server tests (client connected/flushed).
+- IO-Socket-INET6 2.73: io_multihomed6.t, which depends on the IPv6 host setup.
+- Linux-Inotify2 2.3: Linux-only (sys/inotify.h), not applicable on Darwin. Also blocks App::Inotify::Hookable and File::Hotfolder.
+
+TOOLCHAIN, NOT DEPENDENCIES
+- Lingua-Identify-CLD 0.10: no arm64 case in build_config.h.
+- Lingua-Identify-CLD2 0.03: clang C++11 narrowing errors in generated tables.
+- Digest-FarmHash 0.02: the bundled `version` file shadows the libc++ <version> header (case-insensitive filesystem).
+- Devel-StatProfiler 0.57: a macro collides with SDK libc++ __locale_dir/messages.h.
+- Devel-QuickCover 0.900014: perl_siphash.h:325 "redefinition of 'i'", plus malloc.h type errors. This is a header/macro clash in the build, not a missing library.
+
+ALREADY RESOLVED OR NOT DEPENDENCY FAILURES
+- AnyEvent-Redis-RipeRedis 1.62: "Can't modify non-lvalue subroutine call of &Time::HiRes::sleep in addition (+)" in t/tlib/Test/RedisRunner.pm:103. It's a parse failure before any server check, so it's not dependency-only. It would also need redis-server after that.
+- Data-FlexSerializer 1.10: first blocked by the Sereal-Encoder 7.001 build, which is now ported. The latest run fails "We should die under Storable and JSON when fed a plain SvPV" (behaviour).
+- Test-Block 0.13, Future-AsyncAwait 0.71 (06await-nested.t), Devel-Cover 1.52 (gold/line differences), Test-Kwalitee-Extra v0.4.0, Dancer2-Plugin-REST 1.03: test or behaviour failures.
+- JSON-WebToken 0.10: an upstream RSA-PSS default issue, not XPerl.
+- Data-Dump-Streamer 2.42: RC-lane only. The new CPAN release supersedes it, and your RC patch work covers it.
+
+Caveat: these are the latest local logs, not new runs. Homebrew-installed libraries are found once the native prefix is searched (installer PR #6). The libraries listed above are simply absent on this host.
