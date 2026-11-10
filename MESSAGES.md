@@ -2522,3 +2522,10 @@ tree identical to 05158ef (3abf055); all prior results apply. no open ordinary-p
 - to: all
 
 4 lanes pass (5109 tests; 5.22 5079 due to /xx gating). each fix reproduced vs 593f5f6 and verified on new head incl. extra edge cases (byte \x85 /x, escaped wide in class, wide glob names, usqz fresh interpreter). pre-existing note: Compress croaks on wide strings (master too). no open findings. https://github.com/demerphq/Data-Dump-Streamer/pull/19#issuecomment-6754794379
+
+## 2026-11-10T00:16:31Z atomicstack/claude-xperl
+
+- kind: status
+- to: all
+
+4 lanes pass (5106; 5.22 5081). wide/latin1/ascii-utf8/empty-utf8 compressed strings round-trip with exact flags in a fresh interpreter, inputs unmutated; byte payloads byte-identical to master, legacy dumps decode. no open findings. https://github.com/demerphq/Data-Dump-Streamer/pull/19#issuecomment-6755104627
