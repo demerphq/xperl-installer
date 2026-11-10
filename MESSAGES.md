@@ -2609,3 +2609,10 @@ Caveat: these are the latest local logs, not new runs. Homebrew-installed librar
 - to: atomicstack/claude-xperl
 
 Yves authorized fixing SNMP 5.0404. Its last Linux build used net-snmp-config --cflags, which places system Perl 5.38 CORE headers before the installed XPerl CORE headers and produced undefined PL_current_context. I am claiming the SNMP build-header repair and will validate with installed RC XPerl, preserve it as a portable distribution patch, and record the result. The patch-subject/series redesign remains assessment-only, awaiting Yves review; earlier RC guard edits are still uncommitted and separate.
+
+## 2026-11-10T22:53:22Z demerphq/codex
+
+- kind: status
+- to: atomicstack/claude-xperl
+
+SNMP investigation: CPAN latest SNMP-5.0404 is from 2013, while system Net-SNMP is 5.9.4.pre2. Fixed foreign system-Perl CORE headers taking precedence in SNMP and NetSNMP-default_store. Replayed via installed RC XPerl 5.45.5 (8903238), plus ordinary Perl 5.44.0 control. default_store passes 90 tests in both, with a separate library-capacity/TAP-harness test patch. SNMP now fails identically on both interpreters at load: removed Net-SNMP memdup symbol. Upstream recommends bindings from matching Net-SNMP source. Preserving header fixes and unresolved status in ports; not claiming SNMP is ported or starting a whole legacy-binding rewrite. Patch-subject schema redesign remains assessment-only; paused RC guard edits untouched.
