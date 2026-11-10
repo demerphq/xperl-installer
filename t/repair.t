@@ -71,6 +71,9 @@ for my $name (qw(Fixable Unfixable Slow NeedsLibrary Unknown NeedsPerl Extra)) {
             },
         }));
     }
+    if ($name eq 'Fixable' || $name eq 'Unfixable') {
+        $tar->add_data("$dist/lib/Example/placeholder", '');
+    }
     $tar->write(File::Spec->catfile($releases, "$dist.tar.gz"), 1);
 }
 
@@ -108,6 +111,15 @@ if ($request->{module} =~ /Example::(?:Fixable|Unfixable|Unknown)\z/) {
         references => [{ url => 'https://example.org/issues/42' }],
     });
     close $research or die $!;
+}
+# Build cleanup can remove a packaged empty directory placeholder. Neither
+# that removal nor a new empty file can become a unified text patch.
+if ($request->{module} =~ /Example::(?:Fixable|Unfixable)\z/) {
+    unlink File::Spec->catfile($request->{source}, qw(lib Example placeholder))
+        or die $!;
+    open my $empty, '>', File::Spec->catfile($request->{source}, qw(lib Example Empty.pm))
+        or die $!;
+    close $empty or die $!;
 }
 exit 0 if $request->{module} eq 'Example::Unfixable';
 if ($request->{module} eq 'Example::Slow') { sleep 3; exit 0 }
@@ -249,6 +261,9 @@ is_deeply([map { $_->{name} } @{$receipt->{phases}}],
           'installer reran all checks after repair');
 my $proposal = $receipt->{proposal};
 ok($proposal && -f $proposal->{path}, 'reviewable patch was written');
+is_deeply($proposal->{omitted_empty_files},
+          ['lib/Example/Empty.pm', 'lib/Example/placeholder'],
+          'receipt reports empty-file presence changes omitted from text patches');
 is($receipt->{registration}{status}, 'registered',
    'successful repair entered the configured registry');
 ok(-f $receipt->{registration}{index}
@@ -266,6 +281,8 @@ unlike($patch, qr/^\+\+\+ b\/(?:Makefile$|blib\/)/m,
 unlike($patch, qr/Attribute\.o/, 'patch excludes an agent-built object file');
 unlike($patch, qr/tmp2/, 'patch excludes a test scratch file');
 unlike($patch, qr/\.xperl-repair-/, 'patch excludes repair research files');
+unlike($patch, qr{lib/Example/(?:Empty\.pm|placeholder)},
+       'empty placeholders do not discard or corrupt the source repair');
 is($receipt->{upstream_research}[0]{status}, 'checked',
    'receipt retains the agent upstream check');
 open my $evidence_file, '<', $receipt->{registration}{evidence} or die $!;

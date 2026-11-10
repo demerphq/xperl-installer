@@ -370,6 +370,13 @@ reinstalling XPerl, then resuming with the installed interpreter; the current
 process cannot switch interpreters. These are workflow requirements, not a
 restriction on what the repair worker may investigate or edit.
 
+Proposals use unified text patches, which cannot add or remove empty files.
+Empty-file presence changes do not count as repair progress. They are listed
+in the receipt's `proposal.omitted_empty_files` when other source changes
+produce a proposal, so build cleanup of an empty directory placeholder does
+not discard a real repair. Required marker files must be preserved, or the
+repair must express the requirement through source changes.
+
 When the log identifies a missing CPAN prerequisite that the release did not
 declare, the repair program should leave the source alone and write a JSON
 response at `response_path`:

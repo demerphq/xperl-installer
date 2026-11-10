@@ -113,6 +113,10 @@ registry proposal. Review each repair for reusable migration guidance and
 include that guidance in your final explanation. Do not merely make a local
 installation succeed and discard the fix.
 
+Repairs are preserved as unified text patches. They cannot represent adding
+or removing an empty file. Keep required marker files in place and express
+the repair through source changes instead of relying on their presence.
+
 Keep scratch notes and host-specific diagnostics in files named
 .xperl-repair-ATTEMPT-notes.* inside the source directory, using the request's
 attempt number. The installer retains these locally and excludes them from

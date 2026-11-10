@@ -72,12 +72,19 @@ sub source_fingerprint ($class, %args) {
     my $original_files = files($original);
     my %candidates = (%$original_files, %$new_files);
     my $digest = Digest::SHA->new(256);
+    my $empty_digest = Digest::SHA::sha256_hex('');
 
     for my $relative (sort keys %candidates) {
         my $path = File::Spec->catfile($source, $relative);
+        my $old = $original_files->{$relative}
+            ? File::Spec->catfile($original, $relative) : undef;
+
+        # Text patches cannot add or remove an empty file. Ignore a new
+        # empty file, and treat a deleted empty placeholder as unchanged.
+        next if !$old && -f $path && -z $path;
         $digest->add($relative, "\0");
         unless (-f $path) {
-            $digest->add("removed\0");
+            $digest->add($old && -z $old ? $empty_digest : 'removed', "\0");
             next;
         }
         open my $input, '<:raw', $path
@@ -97,12 +104,20 @@ sub write_patch ($class, %args) {
     my %candidates = (%$original_files, %$new_files);
     open my $output, '>:raw', $path or die "cannot write $path: $!\n";
     my @changed;
+    my @omitted_empty_files;
     for my $relative (sort keys %candidates) {
         my $old = $original_files->{$relative}
             ? File::Spec->catfile($original, $relative) : undef;
         my $new = $source_files->{$relative}
             ? File::Spec->catfile($source, $relative) : undef;
         next unless $old || $new;
+        # diff compares a missing file with /dev/null, so an empty-file
+        # presence change produces no hunk. Keep it visible in the receipt
+        # without discarding the distribution's real source repair.
+        if ((!$old || !$new) && -z($old // $new)) {
+            push @omitted_empty_files, $relative;
+            next;
+        }
         if ($old && $new) {
             my $comparison = compare($old, $new);
             die "cannot compare $relative: $!\n" if $comparison < 0;
@@ -123,10 +138,16 @@ sub write_patch ($class, %args) {
         push @changed, $relative;
     }
     close $output or die "cannot close $path: $!\n";
-    return { path => $path, files => \@changed } unless @changed;
+    my $result = {
+        path => $path,
+        files => \@changed,
+    };
+    $result->{omitted_empty_files} = \@omitted_empty_files if @omitted_empty_files;
+    return $result unless @changed;
     open my $input, '<:raw', $path or die "cannot read $path: $!\n";
     my $digest = Digest::SHA->new(256)->addfile($input)->hexdigest;
-    return { path => $path, sha256 => $digest, files => \@changed };
+    $result->{sha256} = $digest;
+    return $result;
 }
 
 1;
