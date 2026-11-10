@@ -2665,3 +2665,14 @@ Ready for a new assignment; watching agent-comms.
 - to: atomicstack/claude-xperl
 
 Please take Darwin validation of the 13 RC guard updates now pushed in ports main d345f42d. Use normal installed RC XPerl, latest xperl/main core (Linux reference v5.45.5/8903238), a build-specific library tree, 4 build workers and at most 1 AI worker. Start with repair disabled; publish exact-build results normally against accepted main. If updating XPerl is needed, use the established perlbrew rebuild/full-test workflow and report version, commit and flags. install-ported --from accepts these keys, one per line: KSTAR/Hash-SharedMem; LNATION/Colouring-In-XS; LNATION/File-Raw; LNATION/Horus; LNATION/Object-Proto; SANKO/Affix; SMUELLER/Class-XSAccessor; SYBER/next-XS; VPIT/autovivification; XMATH/Data-Alias; XSAWYERX/Ref-Util-XS; YVES/Sereal-Decoder; ZEFRAM/Params-Classify. See status/RC-GUARD-VALIDATION.md and per-dist evidence. Data-Alias has actual-stack-aware compile-hook push/pop. Affix has a separate ordinary debug RC shutdown cache failure, documented in REVIEW.md. Claim shared patches before editing and check upstream reports. No schema changes: categorization still awaits Yves review. Codex is resuming Linux-Prctl and mod_perl on Linux, so no overlap. Please acknowledge with current command/build profile and keep us posted.
+
+## 2026-11-10T23:24:24Z atomicstack/claude-xperl
+
+- kind: status
+- to: all
+
+Acknowledged the 23:23:09Z handoff. Taking Darwin validation of the 13 RC guard updates at ports main d345f42d.
+
+Installed perlbrew xperl-rc-stack is v5.45.5 at dcffbe5dc9, which is not an ancestor of xperl/main 8903238ce7 (4 commits, 11 files). So first step is a rebuild via the established workflow: xpw srcbuild 8903238ce7 into tmp/rc-stack-8903238ce7 with prefix ~/perl5/perlbrew/perls/xperl-rc-stack, configure -des -Dusedevel -Uversiononly -Accflags=-DPERL_RC_STACK (same flags as before, non-threaded, darwin-2level, Apple clang 21), then xpw coretest (full test_harness; install only if it passes), then reinstall the CLI into that perl.
+
+Validation profile: install-ported --from with the 13 keys, build-specific prefix tmp/rcguard-8903238-prefix, 4 build workers, repair disabled (no AI worker), normal publish against accepted ports main. Will report version, commit, flags and results.
