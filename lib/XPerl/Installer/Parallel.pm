@@ -58,9 +58,9 @@ sub mark_installed ($self, $cpan_path, $receipt) {
     return;
 }
 
-# Requests are { module => NAME } (resolved like an ordinary install) or
-# { release => FETCHED_RELEASE } (built even when the module is already
-# available). Returns the requests with their node paths and every node.
+# Requests name a module, an exact cpan_path, or a fetched release.
+# Exact releases build even when a module is already available. Returns
+# the requests with their node paths and every node.
 sub run ($self, @requests) {
     for my $request (@requests) {
         if ($self->_stop_requested) {
@@ -69,9 +69,16 @@ sub run ($self, @requests) {
             next;
         }
         my $path = eval {
-            $request->{release}
-                ? $self->_add_release($request->{release}, force => 1)
-                : $self->_add_module($request->{module}, '0', undef);
+            if (defined $request->{cpan_path}) {
+                my $release = $self->_fetch_release($request->{cpan_path});
+                $request->{module} = $release->{module};
+                $self->_add_release($release, force => 1);
+            }
+            else {
+                $request->{release}
+                    ? $self->_add_release($request->{release}, force => 1)
+                    : $self->_add_module($request->{module}, '0', undef);
+            }
         };
         if (!defined $path && $@) {
             chomp(my $error = $@);
@@ -95,6 +102,28 @@ sub run ($self, @requests) {
 sub node ($self, $path) { return $self->{nodes}{$path} }
 
 # ---------------------------------------------------------------- graph
+
+# An archive can supply tools or unindexed modules. Metadata gives its
+# registry identity and a useful receipt label without requiring PAUSE to
+# resolve a module name first. Fetch validates the path and archive.
+sub _fetch_release ($self, $path) {
+    my $release = $self->{fetcher}->fetch_path($path);
+    my $meta = XPerl::Installer::Deps::_metadata($release->{archive});
+    my ($distribution, $version) = $meta
+        ? XPerl::Installer::Deps::_distribution_identity($meta, $path)
+        : XPerl::Installer::Deps::_identity_from_path($path);
+    (my $preferred = $distribution) =~ s/-/::/g;
+    my $provides = $meta ? $meta->provides // {} : {};
+    my @modules = sort {
+        ($b eq $preferred) <=> ($a eq $preferred)
+            || length($a) <=> length($b) || $a cmp $b
+    } grep { /\A[A-Za-z_][A-Za-z_0-9]*(?:::[A-Za-z_0-9]+)*\z/ }
+        keys %$provides;
+
+    return { %$release, distribution => $distribution,
+        distribution_version => $version, version => $version,
+        module => $modules[0] // $preferred };
+}
 
 # Requirements belong to the dependent that states them: one dependent's
 # constraint never changes what satisfies another. A module maps to one
@@ -636,6 +665,12 @@ XPerl::Installer::Parallel - schedule CPAN builds and repairs
 The scheduler resolves the dependency graph before building releases. It
 starts a release when its prerequisites are installed and keeps independent
 builds moving when another release fails.
+
+Requests may contain C<module>, C<release>, or C<cpan_path>. A C<cpan_path>
+is an exact archive path below CPAN's C<authors/id/> directory. It is fetched
+without a module-index lookup and forced through build, test and install.
+Its metadata supplies prerequisites and distribution identity. A missing or
+invalid archive fails that request while independent requests continue.
 
 With a configured repair command, a failed release enters the repair queue.
 Its dependents wait while repair runs. A successful repair installs the

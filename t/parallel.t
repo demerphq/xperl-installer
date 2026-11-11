@@ -5,6 +5,7 @@ use FindBin;
 use lib "$FindBin::Bin/../lib";
 use Archive::Tar;
 use Cwd qw(abs_path);
+use File::Copy qw(copy);
 use File::Find qw(find);
 use File::Path qw(make_path);
 use File::Spec;
@@ -124,6 +125,12 @@ release('Twins', requires => [qw(ViaTwin ViaExtra)]);
 release('UsesInternal', requires => ['Internal']);
 release('UsesDynamicVersion', requires => ['DynamicVersion>=v1.20.0']);
 
+# An exact archive target must work when PAUSE indexes none of its modules.
+release('Unindexed', requires => ['Base']);
+@index = grep { !/^Example::Unindexed\s/ } @index;
+copy(File::Spec->catfile($releases, 'Example-Unindexed-1.00.tar.gz'),
+     File::Spec->catfile($releases, 'unindexed-bundle.tar.gz')) or die $!;
+
 my $index = "File: 02packages.details.txt\n\n" . join("\n", sort @index) . "\n";
 gzip \$index => File::Spec->catfile($mirror, 'modules', '02packages.details.txt.gz')
     or die $GzipError;
@@ -177,6 +184,43 @@ ok(phase($built->{Pair}, 'configure')->{started}
        >= max(map { phase($built->{$_}, 'install')->{finished} } qw(SlowA SlowB)),
    'a release starts only after its prerequisites are installed');
 ok(-f File::Spec->catfile($prefix, qw(lib perl5 Example Pair.pm)), 'module installed');
+
+# Exact releases share ordinary prerequisite resolution and isolate fetch
+# failures to their own request, including in a one-worker batch.
+my $unindexed_path = 'E/EX/EXAMPLE/unindexed-bundle.tar.gz';
+my ($archive_status, $archive_result, $archive_prefix, $archive_work) =
+    install('--jobs', 1, $unindexed_path);
+is($archive_status, 0, 'an unindexed archive installs with one worker');
+is($archive_result->{modules}[0]{cpan_path}, $unindexed_path,
+   'the result identifies the exact requested archive');
+ok(-f File::Spec->catfile($archive_prefix, qw(lib perl5 Example Base.pm)),
+   'an unindexed archive installs its indexed prerequisite');
+ok(-f File::Spec->catfile($archive_prefix, qw(lib perl5 Example Unindexed.pm)),
+   'the archive module installs without a package index entry');
+
+{
+    local $ENV{PERL5LIB} = File::Spec->catdir($archive_prefix, qw(lib perl5));
+    my ($repeat_status, $repeat_result, $repeat_prefix, $repeat_work) =
+        install('--jobs', 1, $unindexed_path);
+    is($repeat_status, 0, 'an exact archive rebuilds an available module');
+    my @rebuilt = grep { $_->{cpan_path} eq $unindexed_path }
+        receipts($repeat_work);
+    is(scalar @rebuilt, 1, 'the explicit rebuild produces a new build receipt');
+}
+
+my ($missing_status, $missing_result) = install('--jobs', 2,
+    'E/EX/EXAMPLE/Example-Missing-1.00.tar.gz', 'Example::Fine');
+is($missing_status, 1, 'a missing exact archive fails the batch');
+is($missing_result->{modules}[1]{status}, 'installed',
+   'an independent module installs after an archive fetch failure');
+
+my ($unsafe_status, $unsafe_result) = install('--jobs', 1,
+    '../outside.tar.gz', 'Example::Fine');
+is($unsafe_status, 1, 'an unsafe archive target is rejected');
+like($unsafe_result->{modules}[0]{reason}, qr/unsafe or unsupported/,
+     'the archive-path validation explains the rejection');
+is($unsafe_result->{modules}[1]{status}, 'installed',
+   'unsafe archive rejection leaves independent requests runnable');
 
 # An installed module may take its version from another package. Metadata
 # cannot evaluate that declaration alone, so the installer loads the module

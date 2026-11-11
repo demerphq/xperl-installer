@@ -36,7 +36,7 @@ Usage: xperl-install resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Mo
                      [--native-prefix DIR]... [--no-native-prefix]
                      [--layout auto|site|install_base]
                      [--publish auto|direct|pr|off]
-                     [--mirror URL|DIR] [--cache DIR] [--workdir DIR] Module::Name...
+                     [--mirror URL|DIR] [--cache DIR] [--workdir DIR] TARGET...
        xperl-install install-ported --registry DIR [--config FILE] [--prefix DIR]
                      [--dry-run] [--json] [--resume] [--action-shell]
                      [--jobs K]
@@ -54,8 +54,10 @@ Usage: xperl-install resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Mo
 
 This command must run with an installed XPerl. Installation supports
 Makefile.PL and Build.PL releases and their declared required prerequisites.
-install accepts several modules, or a file of module names (one per line;
+install accepts module names or exact CPAN archive paths below authors/id/,
+or a file of these targets (one per line;
 blank lines and # comments are ignored), and continues past failures.
+An exact archive target rebuilds even when its modules are already installed.
 Failed releases enter the repair queue while independent builds continue.
 --repair-jobs K allows up to K repair commands to run at once.
 --repair-interval SECONDS spaces repair starts across installer processes.
@@ -336,7 +338,9 @@ dispatch ($action) {
         # Several modules, a list, or parallel jobs use the scheduler: each
         # module is resolved once, shared prerequisites build once, and one
         # module's failure does not stop the rest.
+        my $has_archive_targets = grep { m{/} } @modules;
         if ($jobs > 1 || @modules > 1 || defined $from || $resume
+            || $has_archive_targets
             || $action_shell || $install_builder->repair_enabled) {
             my %seen;
             my @requested = grep { !$seen{$_}++ } @modules;
@@ -350,7 +354,10 @@ dispatch ($action) {
                         printf STDERR "%-9s %s%s\n", $node->{status}, $node->{cpan_path},
                             ($node->{reason} ? " ($node->{reason})" : '');
                     }) : ()));
-                $result = $parallel->run(map { { module => $_ } } @requested);
+                my @requests = map {
+                    m{/} ? { module => $_, cpan_path => $_ } : { module => $_ }
+                } @requested;
+                $result = $parallel->run(@requests);
                 my @actions = map { { cpan_path => $_->{cpan_path},
                                       %{$_->{user_action}} } }
                               grep { $_->{user_action} } @{$result->{nodes}};
@@ -365,6 +372,8 @@ dispatch ($action) {
                 my $reason = $request->{error} // ($node ? $node->{reason} : undef);
                 push @outcomes, {
                     module => $request->{module},
+                    (defined $request->{cpan_path}
+                        ? (cpan_path => $request->{cpan_path}) : ()),
                     status => !$request->{error}
                         && (!$node || $node->{state} eq 'installed')
                         ? 'installed' : 'failed',

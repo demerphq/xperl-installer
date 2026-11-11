@@ -276,6 +276,7 @@ and it leaves color settings such as `NO_COLOR` to the distribution's tests.
 `--jobs K` (or `jobs` in the `[install]` table) builds independent releases
 in parallel, for both `install` and `install-ported`. The default is four
 build workers. A single `install Module --jobs 1` uses the sequential path.
+Exact archive targets use the scheduler with any worker count.
 The scheduler:
 
 - The release graph is resolved breadth-first from each release's static
@@ -301,8 +302,21 @@ The scheduler:
   as failures arrive, with one worker by default. `--repair-jobs K` or
   `repair_jobs = K` in `[install]` sets its size independently of `--jobs`.
 
-`install` also accepts several module names, or `--from FILE` with one module
-per line (blank lines and `#` comments are ignored). Such a batch uses the same
+`install` accepts module names and exact CPAN archive paths below
+`authors/id/`. Use an archive path for a distribution without an indexed
+module or to validate one exact release:
+
+```sh
+xperl-install install --prefix "$prefix" --registry "$ports" \
+  F/FE/FELIPE/JavaScript-QuickJS-0.21.tar.gz
+```
+
+An archive target uses the named release even when its modules are already
+installed. It resolves prerequisites from release metadata and records the
+source hash and build result. URLs and local archive paths are not accepted.
+
+`--from FILE` accepts one module name or CPAN archive path per line
+(blank lines and `#` comments are ignored). Such a batch uses the same
 scheduler, even with one job: each module is resolved once, prerequisites they
 share are built once, and a failure does not stop the other modules. The
 output adds a `modules` list with each requested module's status, release,
