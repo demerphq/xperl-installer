@@ -48,6 +48,7 @@ t/native-prefix.t
 t/parallel.t
 t/platform.t
 t/ported.t
+t/proposal.t
 t/publication.t
 t/registry.t
 t/repair.t

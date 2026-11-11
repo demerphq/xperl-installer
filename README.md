@@ -165,6 +165,12 @@ Apache module into a server remains a separate server-configuration step.
 Configuration arguments belong in the user's config and local receipts;
 host-specific paths must not enter a published compatibility patch.
 
+Repair proposals omit regenerated outputs whose overwrite warning and
+generation traceback identify a generator shipped in the release. A fix
+to that generator is retained so configuration can rebuild the output on
+the recipient's host. A generic generated-file comment or a missing
+generator is insufficient to exclude a shipped source file.
+
 For example, `xperl-install install --config config.toml --agent claude
 Module::Name` chooses Claude Code. `--agent codex` chooses Codex, defaulting
 to `gpt-6.1-sol` with high reasoning effort. Claude defaults to `sonnet`, the
