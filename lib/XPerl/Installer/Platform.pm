@@ -14,6 +14,8 @@ sub current () {
     my $compiler = $Config{gccversion} || $Config{ccversion} || '';
     my $flags = $Config{ccflags} // '';
     my $stack = eval { Internals::stack_refcounted() & 1 };
+    # Configure uses true/false here. The string "false" is true in Perl.
+    my $shared = $Config{useshrplib};
     my $build = {
         schema => 1,
         xperl_commit => $Config{git_commit_id} // '',
@@ -25,6 +27,8 @@ sub current () {
             ? ($Config{usemymalloc} eq 'y' ? 1 : 0) : undef,
         uselongdouble => $Config{uselongdouble} ? 1 : 0,
         usequadmath => $Config{usequadmath} ? 1 : 0,
+        useshrplib => defined($shared)
+            ? ($shared =~ /\A(?:true|define|yes|y|1)\z/i ? 1 : 0) : undef,
         debugging => $flags =~ /(?:^|\s)-DDEBUGGING(?:\s|$)/ ? 1 : 0,
         rc_stack => defined($stack) ? 0 + $stack : undef,
         ptrsize => $Config{ptrsize},

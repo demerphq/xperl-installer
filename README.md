@@ -589,6 +589,13 @@ an earlier success only when its receipt still exists and the XPerl binary,
 version, prefix, source hash, and selected patches are unchanged. Earlier
 failures are always rebuilt and never reported as successes.
 
+Build identities include whether Perl uses a shared `libperl`, as well as
+threads, multiplicity, the RC stack, debugging and numeric options. Static
+and shared interpreters can have identical ordinary compiler flags yet
+differ for embedding modules such as mod_perl. Older records without the
+shared-library field do not establish validation for either setting. Start
+a separate work directory and module tree when changing interpreter builds.
+
 `planning/rc-xs-coverage` finds native-source distributions with recorded
 successes on the running interpreter's OS and compares their current
 patches with that exact build's validation. Run it with installed RC XPerl:

@@ -30,6 +30,21 @@ is($platform->{build}{usemymalloc},
 is(XPerl::Installer::Platform::current()->{build_id}, $platform->{build_id},
    'the same interpreter reports the same build identity');
 
+# The embedding library affects whether Apache can link, even when the
+# interpreter version, architecture and ordinary flags are identical.
+{
+    no warnings 'once';
+    local *XPerl::Installer::Platform::Config = {%Config::Config};
+    $XPerl::Installer::Platform::Config{useshrplib} = 'false';
+    my $static = XPerl::Installer::Platform::current();
+    $XPerl::Installer::Platform::Config{useshrplib} = 'true';
+    my $shared = XPerl::Installer::Platform::current();
+    is($static->{build}{useshrplib}, 0, 'a false setting records static libperl');
+    is($shared->{build}{useshrplib}, 1, 'a true setting records shared libperl');
+    isnt($static->{build_id}, $shared->{build_id},
+         'static and shared embedding libraries have distinct build identities');
+}
+
 is_deeply(detect(env => { HOMEBREW_PREFIX => $other }, os => 'linux',
                  candidates => [$brew]),
           [$other], 'HOMEBREW_PREFIX names the native prefix');

@@ -250,7 +250,7 @@ sub run ($class, %args) {
             version => "$^V",
             config => { map { $_ => $Config{$_} } grep { defined $Config{$_} }
                         qw(archname osname osvers cc ccflags optimize
-                           usethreads use64bitall uselongdouble usequadmath
+                           usethreads use64bitall uselongdouble usequadmath useshrplib
                            git_commit_id) },
         },
         registry => { path => $registry->{path}, %{$registry->revision} },

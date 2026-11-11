@@ -155,6 +155,38 @@ configuration adds RC stack support without deliberately enabling threads,
 debugging, long double, or quadmath. Record what Configure actually selected.
 Those other options require their own validation, not extrapolation.
 
+### Threaded and embedding builds
+
+On Linux, `xperl-rc-stack-threaded` adds `-Duseithreads` to the RC profile.
+At core commit `8903238ce7`, its full core suite passed 3,313 files and
+1,488,326 tests. It uses GCC 13.3.0, multiplicity and double precision,
+without DEBUGGING, longdouble or quadmath.
+
+Apache with an event or worker MPM requires a threaded interpreter. On this
+64-bit Linux host, mod_perl's shared module also needs a PIC or shared
+embedding library. The separately installed
+`xperl-rc-stack-threaded-shared` adds `-Duseshrplib`. That build passed
+3,313 files and 1,488,269 core tests at the same commit and other options.
+For an embedding-oriented build, use a fresh source directory and prefix:
+
+```sh
+perlbrew install --as xperl-rc-stack-threaded-shared --no-patchperl -j4 \
+    -Dusedevel -Duseithreads -Duseshrplib -Accflags=-DPERL_RC_STACK \
+    /path/to/fresh/xperl-source
+```
+
+Verify `$Config{useithreads}`, `$Config{usemultiplicity}` and
+`$Config{useshrplib}` with the installed interpreter. The last setting uses
+the strings `true` and `false`; Perl treats both as true in a boolean test.
+The installer records it numerically and includes it in the build identity.
+Older records lacking this setting leave it unknown.
+
+Give each interpreter its own installed modules and a new installer work
+directory. A saved session is tied to its interpreter and prefix. The shared
+download cache can be reused, but installed XS binaries cannot be copied
+between these builds. A successful core suite does not establish that
+mod_perl or other CPAN distributions pass on the new profile.
+
 ## Install and use the tooling normally
 
 Update the installer and ports main branches, keeping unrelated local work.
