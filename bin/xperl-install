@@ -127,6 +127,7 @@ my $explicit_publish = $publish;
 my $settings = defined($config_path)
     ? XPerl::Installer::Config->load($config_path) : {};
 my $defaults = $settings->{install} // {};
+my $configure_args = $defaults->{configure_args} // {};
 $mirror   //= $defaults->{mirror};
 $cache    //= $defaults->{cache};
 $workdir  //= $defaults->{workdir};
@@ -195,6 +196,12 @@ if ($action eq 'install' && $resume) {
     $publish //= 'auto';
     $publish = $explicit_publish if defined $explicit_publish;
     @native_prefixes = @{$options->{native_prefixes}};
+    # A config supplied on resume replaces only the distribution entries it
+    # names. An empty argument list explicitly clears a saved entry.
+    $configure_args = {
+        %{$options->{configure_args} // {}},
+        %{$defaults->{configure_args} // {}},
+    };
 }
 
 # An explicit selection replaces a resumed provider or temporary wrapper.
@@ -237,6 +244,7 @@ sub builder ($ports) {
         (defined $repair_timeout ? (repair_timeout => $repair_timeout) : ()),
         (defined $phase_timeout ? (phase_timeout => $phase_timeout) : ()),
         native_prefixes => [@native_prefixes],
+        configure_args => $configure_args,
         (defined $layout ? (layout => $layout) : ()),
         publish => $publish,
     );
@@ -316,6 +324,7 @@ dispatch ($action) {
                 repair_interval => $repair_interval,
                 phase_timeout => $phase_timeout, layout => $layout,
                 publish => $publish,
+                configure_args => $configure_args,
                 native_prefixes => [map { File::Spec->rel2abs($_) }
                                     @native_prefixes],
             },

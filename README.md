@@ -142,6 +142,29 @@ interval = 10
 command = "/home/me/bin/another-repair-tool"
 ```
 
+Some distributions need their own configuration arguments. Supply arrays
+under `[install.configure_args]`, keyed by CPAN author and distribution:
+
+```toml
+[install.configure_args]
+"SHAY/mod_perl" = ["MP_AP_DESTDIR={prefix}/apache"]
+```
+
+Each element becomes one argument to `Makefile.PL` or `Build.PL`, after the
+installer's layout arguments. Spaces and shell characters remain literal.
+Only `{prefix}` is expanded, to the selected absolute installation prefix.
+Arguments apply to that exact author/distribution, including when it is a
+dependency. They are retained in the installation session for resume.
+A config supplied on resume replaces the argument lists for the keys it
+names. An empty list clears a saved entry.
+
+For mod_perl, `MP_AP_DESTDIR` stages Apache-specific headers and modules
+beneath that directory while Perl modules follow the normal prefix layout.
+This avoids writing into a system Apache installation. Loading the staged
+Apache module into a server remains a separate server-configuration step.
+Configuration arguments belong in the user's config and local receipts;
+host-specific paths must not enter a published compatibility patch.
+
 For example, `xperl-install install --config config.toml --agent claude
 Module::Name` chooses Claude Code. `--agent codex` chooses Codex, defaulting
 to `gpt-6.1-sol` with high reasoning effort. Claude defaults to `sonnet`, the

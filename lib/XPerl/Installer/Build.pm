@@ -26,6 +26,7 @@ use XPerl::Installer::Platform;
 use XPerl::Installer::Proposal;
 use XPerl::Installer::Publication;
 use XPerl::Installer::Fetch;
+use XPerl::Installer::Config;
 use XPerl::Installer::Upstream;
 
 sub new ($class, %args) {
@@ -70,6 +71,8 @@ sub new ($class, %args) {
     my $native_prefixes = $args{native_prefixes} // [];
     die "native prefixes must be a list of directories\n"
         unless ref $native_prefixes eq 'ARRAY';
+    my $configure_args = XPerl::Installer::Config->configure_args(
+        $args{configure_args} // {});
     my $layout = $args{layout} // 'auto';
     die "layout must be auto, site or install_base\n"
         unless $layout =~ /\A(?:auto|site|install_base)\z/;
@@ -96,6 +99,7 @@ sub new ($class, %args) {
     );
     my $self = bless {
         native_prefixes => [@$native_prefixes],
+        configure_args => $configure_args,
         prefix  => $prefix,
         layout  => $layout,
         site_dirs => \%site_dirs,
@@ -219,6 +223,18 @@ sub _changes_metadata ($path) {
     return 0;
 }
 
+sub _configure_args_for ($self, $release) {
+    my ($author) = ($release->{cpan_path} // '')
+        =~ m{\A[^/]+/[^/]+/([^/]+)/};
+    return () unless defined($author) && defined($release->{distribution});
+    my $key = "$author/$release->{distribution}";
+
+    # Expand only this documented placeholder. The result stays one argv
+    # element, including spaces and shell metacharacters in a path or value.
+    return map { s/\{prefix\}/$self->{prefix}/gr }
+        @{$self->{configure_args}{$key} // []};
+}
+
 sub _makefile_pl_layout ($self) {
     return "INSTALL_BASE=$self->{prefix}" if $self->{layout} eq 'install_base';
     my $dirs = $self->{site_dirs};
@@ -332,13 +348,15 @@ sub install ($self, $release, %options) {
                  && -f File::Spec->catfile($core, 'config.h')
                 ? ("PERL_INC=$core") : ()));
         my @steps;
+        my @configure_args = $self->_configure_args_for($release);
+        $record->{configure_args} = [@configure_args] if @configure_args;
         my $configured_target;
         if (-f File::Spec->catfile($source, 'Makefile.PL')) {
             $record->{build_system} = 'Makefile.PL';
             $configured_target = 'Makefile';
             @steps = (
                 ['configure', $perl, 'Makefile.PL',
-                    $self->_makefile_pl_layout],
+                    $self->_makefile_pl_layout, @configure_args],
                 ['build', @make_command],
                 ['test', @make_command, 'test'],
                 ['install', @make_command, 'install'],
@@ -349,7 +367,7 @@ sub install ($self, $release, %options) {
             $configured_target = 'Build';
             @steps = (
                 ['configure', $perl, 'Build.PL',
-                    $self->_build_pl_layout],
+                    $self->_build_pl_layout, @configure_args],
                 ['build', $perl, 'Build'],
                 ['test', $perl, 'Build', 'test'],
                 ['install', $perl, 'Build', 'install'],

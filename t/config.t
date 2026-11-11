@@ -164,4 +164,26 @@ $ok = eval { XPerl::Installer::Config->load($path); 1 };
 like($ok ? '' : $@, qr/install\.publish must be auto, direct, pr or off/,
      'an unknown publication mode is rejected');
 
+# Distribution configuration is explicit argv data, qualified by author.
+open $output, '>:raw', $path or die $!;
+print {$output} <<'TOML';
+schema = 1
+[install.configure_args]
+"SHAY/mod_perl" = ['MP_AP_DESTDIR={prefix}/apache stage', 'MP_APXS=/usr/bin/apxs']
+TOML
+close $output or die $!;
+is_deeply(XPerl::Installer::Config->load($path)->{install}{configure_args},
+    {'SHAY/mod_perl' => ['MP_AP_DESTDIR={prefix}/apache stage', 'MP_APXS=/usr/bin/apxs']},
+    'configure arguments preserve order, spaces and the prefix placeholder');
+
+for my $case (
+    [[], qr/must be a table/],
+    [{'mod_perl' => []}, qr/invalid configure_args distribution key/],
+    [{'SHAY/mod_perl' => 'MP_APXS=apxs'}, qr/must be a list of strings/],
+    [{'SHAY/mod_perl' => ["bad\0argument"]}, qr/without NUL bytes/],
+) {
+    $ok = eval { XPerl::Installer::Config->configure_args($case->[0]); 1 };
+    like($ok ? '' : $@, $case->[1], 'invalid configure arguments are rejected');
+}
+
 done_testing();

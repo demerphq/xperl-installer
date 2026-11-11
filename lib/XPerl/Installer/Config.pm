@@ -22,7 +22,9 @@ sub load ($class, $path) {
     my $install = $config->{install} // {};
     die "config install must be a table\n" unless ref($install) eq 'HASH';
     _keys($install, [qw(prefix mirror cache workdir registry jobs repair_jobs
-                       phase_timeout native_prefixes layout publish)], 'install');
+                       phase_timeout native_prefixes configure_args layout publish)], 'install');
+    $install->{configure_args} = $class->configure_args($install->{configure_args})
+        if exists $install->{configure_args};
     if (exists $install->{publish}) {
         die "config install.publish must be auto, direct, pr or off\n"
             unless defined($install->{publish}) && !ref($install->{publish})
@@ -55,7 +57,7 @@ sub load ($class, $path) {
             unless ref($prefixes) eq 'ARRAY'
                 && !grep { ref || !defined || !length } @$prefixes;
     }
-    for my $key (grep { !/\A(?:jobs|repair_jobs|phase_timeout|native_prefixes)\z/ }
+    for my $key (grep { !/\A(?:jobs|repair_jobs|phase_timeout|native_prefixes|configure_args)\z/ }
                  keys %$install) {
         die "config install.$key must be a nonempty string\n"
             if ref($install->{$key}) || !defined($install->{$key})
@@ -139,6 +141,24 @@ sub load ($class, $path) {
     return $config;
 }
 
+# Copy argument lists so a resumed build or worker cannot change its caller's
+# configuration. Author-qualified keys keep unrelated distributions separate.
+sub configure_args ($class, $table) {
+    die "configure_args must be a table of AUTHOR/Distribution argument lists\n"
+        unless ref($table) eq 'HASH';
+    my %arguments;
+    for my $key (keys %$table) {
+        die "invalid configure_args distribution key $key\n"
+            unless $key =~ m{\A[A-Z0-9_-]+/[A-Za-z0-9][A-Za-z0-9_.-]*\z};
+        my $values = $table->{$key};
+        die "configure_args.$key must be a list of strings without NUL bytes\n"
+            unless ref($values) eq 'ARRAY'
+                && !grep { !defined || ref || /\0/ } @$values;
+        $arguments{$key} = [@$values];
+    }
+    return \%arguments;
+}
+
 sub _keys ($table, $allowed, $where) {
     my %allowed = map { $_ => 1 } @$allowed;
     for my $key (keys %$table) {
@@ -147,3 +167,19 @@ sub _keys ($table, $allowed, $where) {
 }
 
 1;
+
+__END__
+
+=head1 NAME
+
+XPerl::Installer::Config - Installer TOML configuration
+
+=head1 METHODS
+
+C<load($path)> reads and validates a schema 1 TOML configuration.
+C<configure_args($table)> validates and copies a mapping from
+C<AUTHOR/Distribution> keys to argument arrays. The builder passes each
+element as one argument to the selected distribution's configuration script.
+The builder replaces C<{prefix}> with its absolute installation prefix.
+
+=cut

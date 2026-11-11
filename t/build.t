@@ -39,6 +39,12 @@ gzip \$index => File::Spec->catfile($modules, '02packages.details.txt.gz')
 my $tar = Archive::Tar->new;
 $tar->add_data('Example-Tiny-1.00/Makefile.PL', <<'MAKEFILE');
 use ExtUtils::MakeMaker;
+use JSON::PP;
+my @custom = grep { /^XPERL_TEST_OPTION=/ } @ARGV;
+@ARGV = grep { !/^XPERL_TEST_OPTION=/ } @ARGV;
+open my $arguments, '>', 'configure-arguments.json' or die $!;
+print {$arguments} JSON::PP->new->encode(\@custom);
+close $arguments or die $!;
 WriteMakefile(NAME => 'Example::Tiny', VERSION => '1.00');
 MAKEFILE
 $tar->add_data('Example-Tiny-1.00/lib/Example/Tiny.pm', <<'MODULE');
@@ -195,5 +201,45 @@ ok(-f File::Spec->catfile($bad_prefix, qw(lib perl5 Example Zipped.pm)),
 ok(-x File::Spec->catfile($zip_receipt->{workdir},
                          'Example-Zipped-1.00', 'bin', 'probe'),
    'ZIP extraction preserves an executable Unix mode');
+
+# Configure arguments reach only the selected author/distribution and stay
+# single argv elements. Resume must preserve them after the TOML disappears.
+my $configured_prefix = File::Spec->catdir($root, 'configured prefix');
+my $configured_work = File::Spec->catdir($root, 'configured-work');
+my $configuration = File::Spec->catfile($root, 'configured.toml');
+my $argument = 'XPERL_TEST_OPTION={prefix}/apache; literal $(text)';
+open my $toml, '>', $configuration or die $!;
+print {$toml} "schema = 1\n[install.configure_args]\n"
+    . "\"EXAMPLE/Example-Tiny\" = ['$argument']\n"
+    . "\"OTHER/Example-Tiny\" = ['XPERL_TEST_OPTION=wrong-author']\n";
+close $toml or die $!;
+my @install_command = ($^X, $script, 'install', '--config', $configuration,
+    '--mirror', $mirror, '--cache', $cache, '--prefix', $configured_prefix,
+    '--workdir', $configured_work, '--jobs', 1, 'Example::Tiny');
+
+for my $resumed (0, 1) {
+    if ($resumed) {
+        unlink $configuration or die $!;
+        unlink File::Spec->catfile($configured_prefix, qw(lib perl5 Example Tiny.pm))
+            or die $!;
+        @install_command = ($^X, $script, 'install', '--resume',
+                            '--workdir', $configured_work);
+    }
+    open my $install, '-|', @install_command or die $!;
+    my $output = do { local $/; <$install> };
+    ok(close($install), $resumed ? 'configured installation resumes' : 'configured installation succeeds');
+    my $result = JSON::PP->new->decode($output);
+    open my $receipt_file, '<', $result->{receipts}[0] or die $!;
+    my $record = JSON::PP->new->decode(do { local $/; <$receipt_file> });
+    close $receipt_file;
+    my $expected = "XPERL_TEST_OPTION=$configured_prefix/apache; literal \$(text)";
+    is_deeply($record->{configure_args}, [$expected],
+        'receipt records one expanded argument for the matching author');
+    open my $arguments, '<', File::Spec->catfile($record->{workdir},
+        'Example-Tiny-1.00', 'configure-arguments.json') or die $!;
+    is_deeply(JSON::PP->new->decode(do { local $/; <$arguments> }), [$expected],
+        'Makefile.PL receives spaces and shell characters literally');
+    close $arguments;
+}
 
 done_testing();
