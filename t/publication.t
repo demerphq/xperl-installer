@@ -207,6 +207,48 @@ ok(grep($_->{id} eq 'peer-result', @{$merged->{observations}}),
 is(capture($checkout, 'git', 'diff', '--cached', '--name-only'), 'unrelated.txt',
    'a concurrent push does not consume another queued file');
 
+# A second publisher can commit recipe edits already prepared locally.
+# Identical worktree/index bytes are delivered work, rather than a conflict.
+my $converged = 'recipes/converged.md';
+run($peer, 'git', 'pull', '--quiet', '--ff-only', 'origin', 'main');
+make_path(dirname("$peer/$converged"));
+write_file("$peer/$converged", "base recipe\n");
+run($peer, 'git', 'add', '--', $converged);
+run($peer, 'git-compose-commit', '--subject', 'Add shared recipe', '--', $converged);
+run($peer, 'git', 'push', '--quiet', 'origin', 'main');
+$publisher->_refresh($builder);
+
+for my $staged (0, 1) {
+    my $content = "delivered recipe $staged\n";
+    write_file("$checkout/$converged", $content);
+    run($checkout, 'git', 'add', '--', $converged) if $staged;
+    write_file("$peer/$converged", $content);
+    run($peer, 'git-compose-commit', '--subject', 'Deliver shared recipe', '--', $converged);
+    run($peer, 'git', 'push', '--quiet', 'origin', 'main');
+    ok(eval { $publisher->_refresh($builder); 1 },
+       $staged ? 'an identical staged recipe accepts the remote update'
+               : 'an identical unstaged recipe accepts the remote update') or diag $@;
+    is(capture($checkout, 'git', 'diff', 'HEAD', '--', $converged), '',
+       'the delivered recipe is clean against the new published head');
+    is(capture($checkout, 'git', 'diff', '--cached', '--name-only'), 'unrelated.txt',
+       'accepting identical edits preserves unrelated staged work');
+}
+
+# A matching worktree must not discard a different staged version.
+write_file("$checkout/$converged", "private staged recipe\n");
+run($checkout, 'git', 'add', '--', $converged);
+write_file("$checkout/$converged", "common final recipe\n");
+write_file("$peer/$converged", "common final recipe\n");
+run($peer, 'git-compose-commit', '--subject', 'Revise shared recipe', '--', $converged);
+run($peer, 'git', 'push', '--quiet', 'origin', 'main');
+ok(!eval { $publisher->_refresh($builder); 1 },
+   'a distinct staged version remains an unpublished conflict');
+like($@, qr/remote update overlaps an unpublished repair/, 'the conflict is reported');
+is(capture($checkout, 'git', 'show', ":$converged"), 'private staged recipe',
+   'refusal preserves the independently staged content');
+run($checkout, 'git', 'restore', '--source=HEAD', '--staged', '--worktree', '--', $converged);
+$publisher->_refresh($builder);
+
 # A contributor without direct access batches commits locally and submits
 # one PR. Stub only the hosting API; Git still pushes to a real local fork.
 {

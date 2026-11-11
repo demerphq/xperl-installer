@@ -543,6 +543,13 @@ sub _rebase ($self, $builder, $tracking) {
         my $incoming = $self->_must_git($builder, 'diff', '--name-only', '-z',
                                        $head, $rebased);
         for my $path (grep { $protected{$_} } split /\0/, $incoming) {
+            # Another publisher may have delivered these exact edits. They
+            # are no longer unpublished, unless the index holds a distinct
+            # intermediate version that still belongs to the local worker.
+            if ($self->_matches_published_file($builder, $rebased, $path)) {
+                delete $protected{$path};
+                next;
+            }
             die "remote update overlaps an unpublished repair: $path; review $retry\n";
         }
         my @exclude = map { ":(top,literal,exclude)$_" } sort keys %protected;
@@ -556,6 +563,30 @@ sub _rebase ($self, $builder, $tracking) {
         die $error;
     }
     $self->_must_git($builder, 'worktree', 'remove', $retry);
+}
+
+sub _matches_published_file ($self, $builder, $ref, $path) {
+    my $tree = $self->_must_git($builder, 'ls-tree', '-z', $ref, '--', $path);
+    my ($mode, $hash) = $tree =~ /\A(100644|100755) blob ([0-9a-f]+)\t[^\0]+\0\z/;
+    return 0 unless defined $hash;
+    my $file = File::Spec->catfile($self->{checkout}, $path);
+    return 0 unless -f $file && !-l $file;
+
+    my ($mode_status, $filemode) = $self->_git($builder,
+        'config', '--bool', '--get', 'core.filemode');
+    if ($mode_status || _line($filemode) ne 'false') {
+        return 0 unless $mode eq (-x $file ? '100755' : '100644');
+    }
+    return 0 unless _line($self->_must_git($builder,
+        'hash-object', '--no-filters', '--', $path)) eq $hash;
+
+    my ($staged) = $self->_git($builder,
+        'diff', '--cached', '--quiet', 'HEAD', '--', $path);
+    die "cannot inspect staged publication file $path\n" if $staged > 1;
+    return 1 unless $staged;
+
+    my $index = $self->_must_git($builder, 'ls-files', '--stage', '-z', '--', $path);
+    return $index =~ /\A\Q$mode\E \Q$hash\E 0\t[^\0]+\0\z/ ? 1 : 0;
 }
 
 sub _generated_path ($path) {
