@@ -4,6 +4,7 @@ use feature 'signatures';
 use FindBin;
 use lib "$FindBin::Bin/../lib";
 use Cwd qw(abs_path getcwd);
+use Config;
 use Archive::Tar;
 use Digest::SHA qw(sha256_hex);
 use File::Path qw(make_path);
@@ -15,6 +16,12 @@ use Test::More;
 use XPerl::Installer::Build;
 use XPerl::Installer::Publication;
 use XPerl::Installer::Registry;
+
+# The fixture importer runs in another interpreter. Give it this checkout's
+# library instead of depending on a previously installed copy of the tool.
+local $ENV{PERL5LIB} = join $Config{path_sep},
+    abs_path("$FindBin::Bin/../lib"),
+    grep { length } split /\Q$Config{path_sep}\E/, $ENV{PERL5LIB} // '';
 
 plan skip_all => 'publication needs Git and git-compose-commit on PATH'
     unless !grep {
