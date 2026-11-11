@@ -158,6 +158,7 @@ sub _add_module ($self, $module, $range, $from) {
     die "$module $provided from " . _name($node) . " does not satisfy $module $range\n"
         if defined $provided && !_accepts($module, $range, $provided);
     if ($from) {
+        $self->_prioritize($node, $from->{priority});
         $from->{prereqs}{$path} = 1;
         $from->{needs}{$module} = _merge($from->{needs}{$module}, $module, $range);
         $node->{dependents}{$from->{path}} = 1;
@@ -183,6 +184,7 @@ sub _add_release ($self, $release, %options) {
     my $node = $self->{nodes}{$path} //= {
         path => $path, release => $release, prereqs => {}, dependents => {},
         state => 'new', attempts => 0,
+        priority => ++$self->{next_priority},
     };
     $node->{force} = 1 if $options{force};
     if (my $receipt = $self->{installed}{$path}) {
@@ -191,10 +193,26 @@ sub _add_release ($self, $release, %options) {
     return $path;
 }
 
+# A late metadata dependency can already be in the graph for another
+# target. Promote its prerequisites too, so an early request does not wait
+# behind unrelated later requests. Strictly decreasing priorities bound
+# traversal even when the graph contains a dependency cycle.
+sub _prioritize ($self, $node, $priority) {
+    return if $node->{priority} <= $priority;
+    $node->{priority} = $priority;
+    $self->_prioritize($self->{nodes}{$_}, $priority)
+        for keys %{$node->{prereqs}};
+}
+
+sub _priority_order ($left, $right) {
+    return $left->{priority} <=> $right->{priority}
+        || $left->{path} cmp $right->{path};
+}
+
 # Breadth-first: each new node's static prerequisites are resolved before
 # any node is built.
 sub _expand ($self) {
-    while (my @new = sort { $a->{path} cmp $b->{path} }
+    while (my @new = sort { _priority_order($a, $b) }
                      grep { $_->{state} eq 'new' } values %{$self->{nodes}}) {
         for my $node (@new) {
             if ($self->_stop_requested) {
@@ -355,7 +373,7 @@ sub _start_builds ($self, $running) {
 sub _start_repairs ($self, $running, $repair) {
     my $active = grep { $_->{kind} eq 'repair' } values %$running;
 
-    for my $node (sort { $a->{path} cmp $b->{path} }
+    for my $node (sort { _priority_order($a, $b) }
                   grep { $_->{state} eq 'repair_pending' }
                   values %{$self->{nodes}}) {
         last if $self->_stop_requested;
@@ -441,7 +459,7 @@ sub _needs_met ($self, $node) {
 }
 
 sub _ready ($self) {
-    return sort { $a->{path} cmp $b->{path} } grep {
+    return sort { _priority_order($a, $b) } grep {
         my $node = $_;
         $node->{state} eq 'pending'
             && !grep { $self->{nodes}{$_}{state} ne 'installed' }
@@ -665,6 +683,12 @@ XPerl::Installer::Parallel - schedule CPAN builds and repairs
 The scheduler resolves the dependency graph before building releases. It
 starts a release when its prerequisites are installed and keeps independent
 builds moving when another release fails.
+
+Runnable releases follow request order. Shared prerequisites inherit the
+earliest request's priority, including prerequisites discovered after
+configuration. Dependencies still finish before their dependents, and
+available workers keep independent work moving. Pending repairs use the
+same priorities when a repair slot becomes available.
 
 Requests may contain C<module>, C<release>, or C<cpan_path>. A C<cpan_path>
 is an exact archive path below CPAN's C<authors/id/> directory. It is fetched

@@ -124,6 +124,12 @@ release('Twins', requires => [qw(ViaTwin ViaExtra)]);
 }
 release('UsesInternal', requires => ['Internal']);
 release('UsesDynamicVersion', requires => ['DynamicVersion>=v1.20.0']);
+release('ZuluTop', requires => ['ZuluDep']);
+release('ZuluDep');
+release('AlphaSolo');
+release('ZuluLate', dynamic => ['Example::ZuluLow']);
+release('ZuluLow', requires => ['ZuluGrand']);
+release('ZuluGrand');
 
 # An exact archive target must work when PAUSE indexes none of its modules.
 release('Unindexed', requires => ['Base']);
@@ -221,6 +227,26 @@ like($unsafe_result->{modules}[0]{reason}, qr/unsafe or unsupported/,
      'the archive-path validation explains the rejection');
 is($unsafe_result->{modules}[1]{status}, 'installed',
    'unsafe archive rejection leaves independent requests runnable');
+
+# Input order outranks archive spelling. A shared dependency requested later
+# still inherits the priority of the first target that needs it.
+my ($priority_status, $priority_result, $priority_prefix, $priority_work) =
+    install('--jobs', 1, qw(Example::ZuluTop Example::AlphaSolo Example::ZuluDep));
+is($priority_status, 0, 'the prioritized static dependency batch succeeds');
+my $priority_receipts = by_dist(receipts($priority_work));
+ok(phase($priority_receipts->{ZuluTop}, 'install')->{finished}
+       <= phase($priority_receipts->{AlphaSolo}, 'configure')->{started},
+   'the first target and its prerequisites complete before the second target');
+
+# A configure-time dependency can have ancestors already expanded for a
+# later target. Promote the full prerequisite chain when it becomes shared.
+my ($late_status, $late_result, $late_prefix, $late_work) =
+    install('--jobs', 1, qw(Example::ZuluLate Example::AlphaSolo Example::ZuluLow));
+is($late_status, 0, 'the prioritized dynamic dependency batch succeeds');
+my $late_receipts = by_dist(receipts($late_work));
+ok(phase($late_receipts->{ZuluLate}, 'install')->{finished}
+       <= phase($late_receipts->{AlphaSolo}, 'configure')->{started},
+   'late dependencies and their ancestors inherit the earliest target priority');
 
 # An installed module may take its version from another package. Metadata
 # cannot evaluate that declaration alone, so the installer loads the module

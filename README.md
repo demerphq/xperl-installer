@@ -322,6 +322,11 @@ share are built once, and a failure does not stop the other modules. The
 output adds a `modules` list with each requested module's status, release,
 receipt and reason, and the command exits non-zero if any of them failed.
 
+The scheduler prioritizes targets in their input order. Their prerequisites
+inherit that priority, including dependencies discovered during configuration.
+Dependency readiness and worker availability still control when work can
+start. Pending repairs use the same ordering when a repair worker is free.
+
 `install --jobs K` prints a `nodes` list with each release's status, reason,
 receipt and prerequisites. Receipts record each phase's start and finish
 times.
