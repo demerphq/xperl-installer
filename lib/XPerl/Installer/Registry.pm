@@ -18,6 +18,8 @@ use POSIX qw(strftime);
 use version;
 use builtin qw(jumphash_string siphash_2_4);
 use XPerl::Installer::Upstream;
+use XPerl::Installer::Triage;
+use XPerl::Installer::Deps;
 no warnings 'experimental::builtin';
 
 sub new ($class, %args) {
@@ -134,6 +136,32 @@ sub patches_for ($self, $release) {
     };
 }
 
+# A deferral applies only to the exact source, interpreter build and patch
+# set assessed. A new patch or a different build deserves another attempt.
+sub triage_for ($self, $release, $platform) {
+    my $base = $self->status_directory_for($release);
+    my $path = File::Spec->catfile($base, 'status.json');
+    return unless -f $path;
+    my $record = _read_json($path);
+    my $selection = $self->patches_for($release);
+    my $patches = join ',', map { $_->{sha256} } @{$selection->{patches}};
+    for my $observation (reverse @{$record->{observations} // []}) {
+        next unless ($observation->{cpan_path} // '') eq $release->{cpan_path}
+            && ($observation->{source_sha256} // '') eq $release->{sha256}
+            && ($observation->{xperl_version} // '') eq "$^V"
+            && ($observation->{platform}{build_id} // '') eq $platform->{build_id}
+            && ($observation->{platform}{key} // '') eq $platform->{key}
+            && join(',', @{$observation->{patch_sha256} // []}) eq $patches;
+        # Only the latest matching observation governs a retry. In
+        # particular, a later success retires an earlier assessment.
+        return unless $observation->{status} eq 'failed' && $observation->{triage};
+        my $triage = XPerl::Installer::Triage->validate($observation->{triage});
+        return $triage unless $triage->{disposition} eq 'unresolved';
+        return;
+    }
+    return;
+}
+
 # Earlier releases can contain useful migration work even when their patch
 # cannot be applied to the archive being repaired.
 sub known_patches_for ($self, $release) {
@@ -175,6 +203,12 @@ sub _distribution_directory ($self, $release) {
         unless $self->{repositories};
     return $self->directory_for(author_from_path($release->{cpan_path}),
                                 $distribution);
+}
+
+sub status_directory_for ($self, $release) {
+    my ($name) = eval { XPerl::Installer::Deps::_identity_from_path($release->{cpan_path}) };
+    $name //= $release->{distribution};
+    return $self->_distribution_directory({ %$release, distribution => $name });
 }
 
 sub author_from_path ($cpan_path) {
@@ -236,7 +270,7 @@ sub register_repair ($self, $release, $record) {
     die "repair patch digest mismatch\n"
         unless $digest eq ($proposal->{sha256} // '');
     die "repair patch includes a local home path\n"
-        if $patch =~ m{/(?:home|Users)/[^/\s]+/};
+        if $patch =~ m{^\+(?!\+)[^\n]*/(?:home|Users)/[^/\s]+/}m;
 
     my @recipes;
     push @recipes, 'hash-entry-traversal-v1'

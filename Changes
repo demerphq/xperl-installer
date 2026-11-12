@@ -1,4 +1,12 @@
 Unreleased
+    Bound captured command logs (32 MiB by default), support per-process
+    build data limits, and retain limits across resumed sessions. Enforce
+    deadlines even after a child closes its output pipes.
+    Triage unexplained failures against upstream and ordinary Perl evidence.
+    Preserve versioned build controls and scoped deferrals, while continuing
+    repairs for demonstrated XPerl and reference-counted stack defects.
+    Publish archive-keyed status records when metadata names differ. Reject
+    newly added home paths without blocking removed upstream examples.
     Allow a published clean replay to supersede an installed repair whose
     registration failed, retaining the original receipt and queued intent.
     Keep agent notes and protocol files local instead of adding them to

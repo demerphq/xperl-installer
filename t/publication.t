@@ -82,7 +82,7 @@ my $json = JSON::PP->new->canonical->pretty;
 my $record = $json->decode(do { local $/; <$file> });
 close $file or die $!;
 my $registry = XPerl::Installer::Registry->new(path => '.');
-my $dir = $registry->_distribution_directory($record);
+my $dir = $registry->status_directory_for($record);
 make_path($dir);
 my $path = "$dir/status.json";
 my $data = { schema => 2, author => 'EXAMPLE',
@@ -518,5 +518,20 @@ $publication->enqueue($old_record, $old_receipt);
 is($publication->_try_publish($hook_builder, $queued)->{status}, 'superseded',
    'retry recognizes a durable supersession marker');
 ok(!-f $queued, 'retry clears the stale queue item');
+
+# CPAN metadata and archive names are not always spelled alike. The real
+# importer keys status by archive name, while repair indexes use metadata.
+my $mismatch = { %$release, distribution => 'Example-Metadata',
+    cpan_path => 'E/EX/EXAMPLE/Example-Archive-1.00.tar.gz' };
+my $mismatch_receipt = "$root/mismatch.json";
+write_file($mismatch_receipt, $json->encode({ %$mismatch, status => 'failed',
+    platform => { build_id => 'fixture-build' } }));
+$result = $publisher->complete($builder, $mismatch, $mismatch_receipt);
+is($result->{status}, 'pushed', 'archive identity mismatch does not strand publication');
+my $status_directory = $builder->{registry}->status_directory_for($mismatch);
+my $status_relative = File::Spec->abs2rel($status_directory, $checkout);
+like(capture($root, 'git', '--git-dir', $remote, 'show',
+             "main:$status_relative/status.json"), qr/failed/,
+     'the archive-keyed status record reaches the remote');
 
 done_testing();

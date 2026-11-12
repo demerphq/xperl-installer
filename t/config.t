@@ -79,6 +79,20 @@ $ok = eval { XPerl::Installer::Config->load($path); 1 };
 like($ok ? '' : $@, qr/install\.phase_timeout must be a non-negative integer/,
      'a non-numeric phase timeout is rejected');
 
+for my $key (qw(phase_memory_mb phase_log_mb)) {
+    open $output, '>:raw', $path or die $!;
+    print {$output} "schema = 1\n[install]\n$key = 2048\n";
+    close $output or die $!;
+    is(XPerl::Installer::Config->load($path)->{install}{$key}, 2048,
+       "$key is loaded");
+    open $output, '>:raw', $path or die $!;
+    print {$output} "schema = 1\n[install]\n$key = -1\n";
+    close $output or die $!;
+    $ok = eval { XPerl::Installer::Config->load($path); 1 };
+    like($ok ? '' : $@, qr/\Q$key\E must be a non-negative integer/,
+         "$key rejects a negative limit");
+}
+
 open $output, '>:raw', $path or die $!;
 print {$output} "schema = 1\n[install]\nnative_prefixes = ['/opt/homebrew']\n";
 close $output or die $!;

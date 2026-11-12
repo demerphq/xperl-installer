@@ -11,6 +11,10 @@ use XPerl::Installer::Upstream;
 my $root = tempdir(CLEANUP => 1,
     DIR => $ENV{XPERL_TEST_TMPDIR} // File::Spec->tmpdir);
 my $json = JSON::PP->new;
+is(XPerl::Installer::Upstream->testers({
+    distribution => 'Example-Tiny', distribution_version => '1.00',
+}), 'https://fast2-matrix.cpantesters.org/?dist=Example-Tiny%201.00',
+   'repair context links to a release-specific CPAN Testers matrix');
 
 sub write_file {
     my ($name, $content) = @_;

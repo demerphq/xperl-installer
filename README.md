@@ -342,6 +342,30 @@ after N seconds", and its receipt marks the phase `timed_out`. This keeps one
 hung test, for example a test that runs a command which waits on its input,
 from stalling a long or parallel run.
 
+Each command's captured output is limited to 32 MiB by default. A runaway
+output loop is stopped with its descendants, its log retains the output up
+to the cap, and its receipt marks `resource_limit: "log"` with exit 125.
+`--phase-log-mb MiB` (`install.phase_log_mb` in TOML) changes this cap; `0`
+disables it. The cap covers repair and publication command logs too.
+
+On Unix hosts, `--phase-memory-mb MiB` (`install.phase_memory_mb`) sets a
+per-process data limit through `/bin/sh` and `ulimit -S -d`. It applies to
+configure, build, test and install children and their descendants, not the
+installer or AI provider runtime. It preserves a lower inherited limit.
+The default is `0`, disabled. For a laptop with 32 GiB of RAM, four build
+workers with `--phase-memory-mb 2048 --phase-log-mb 32` are a useful starting
+point. This is a per-process limit, not an aggregate memory budget: a build
+can start several processes. OS enforcement of data limits varies, and the
+limit does not cover every kind of mapping. A cgroup or equivalent OS job
+limit can enforce an aggregate budget. Windows rejects an explicit memory
+limit rather than silently ignoring it.
+
+Receipts and repair requests record the configured limits. An allocation
+failure with a limit in force is not by itself evidence of a Perl defect.
+Raise a legitimate build's limit explicitly rather than weakening tests.
+Limits supplied on `install --resume` override the saved session; other
+options keep their documented resume behavior.
+
 ## Native libraries
 
 Distributions that bind a C library need its headers, libraries and
@@ -372,6 +396,38 @@ call to 600 seconds by default. This is a hang guard, not a measure of repair
 quality. An unchanged source edit stops retries early.
 `--repair-interval SECONDS` spaces agent call starts across installer processes
 owned by the same user; the default is ten seconds.
+
+### Failure triage
+
+Repair known XPerl and `PERL_RC_STACK` incompatibilities first. An RC-stack
+defect also occurring on ordinary RC-stack Perl is a repair candidate.
+Retest after the repair. Investigate any remaining or unexplained failure
+using upstream reports, CPAN Testers, host prerequisites and ordinary Perl
+controls where available. Record the exact control version and configuration.
+A red matrix result, a different failure, or the age of a release alone
+does not establish that the release is already broken or obsolete.
+
+An agent can write `{"schema":1,"status":"deferred","triage":{...}}` to
+`response_path`. The triage table has `schema: 1`, a portable single-line
+`reason`, `references: [{"url":"https://..."}]`, and `baselines: []`.
+Its `disposition` is `unsupported-platform`, `obsolete-superseded`,
+`upstream-broken`, or `unresolved`. Unsupported or superseded claims need
+supporting references. An upstream-broken claim also needs a `same-failure`
+ordinary Perl control. Each baseline contains `implementation: "perl"`,
+`perl_version` (for example `v5.45.5`), `os`, `archname`, `result`
+(`same-failure`, `different-failure`, or `pass`), and numeric 0/1 build flags
+`rc_stack`, `useithreads`, `usemultiplicity`, `debugging`, `uselongdouble`,
+and `usequadmath` in a `build` table. Record actual flags, not guessed ones.
+Keep local commands and full logs in agent notes. If evidence is insufficient,
+use `unresolved` or a human handoff instead of inventing a baseline result.
+
+Deferrals remain failed observations, block dependent releases, and retain
+triage in receipts and batch results. They do not consume further repair
+calls in that attempt. Published assessments are reused only for the exact
+source hash, XPerl version/build, platform and ordered patch digests. A new
+patch, another interpreter build, or a later success retires that deferral.
+`unresolved` assessments remain eligible for investigation on a later run.
+Ordinary installation still needs neither a registry nor an AI provider.
 
 A repair program may start a paid AI agent. `--repair-limit N` optionally
 caps calls across the whole run. When set, the scheduler reserves each

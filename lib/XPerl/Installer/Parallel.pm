@@ -12,6 +12,7 @@ use JSON::PP;
 use Module::Metadata;
 use POSIX ();
 use XPerl::Installer::Deps;
+use XPerl::Installer::Platform;
 
 # Opt-in parallel installation. The release graph is resolved breadth-first
 # from static metadata, then up to K forked workers build releases whose
@@ -231,6 +232,7 @@ sub _expand ($self) {
                     ($release->{distribution}, $release->{distribution_version}) =
                         XPerl::Installer::Deps::_distribution_identity($meta, $release->{cpan_path});
                 }
+                next if $self->_defer_known($node);
                 my $provides = $meta->provides // {};
                 $node->{declared}{$_} = $provides->{$_}
                     for grep { ($provides->{$_}{file} // '') =~ m{\Alib/} } keys %$provides;
@@ -244,9 +246,24 @@ sub _expand ($self) {
             else {
                 ($release->{distribution}, $release->{distribution_version}) =
                     XPerl::Installer::Deps::_identity_from_path($release->{cpan_path});
+                $self->_defer_known($node);
             }
         }
     }
+}
+
+sub _defer_known ($self, $node) {
+    my $registry = $self->{builder}{registry} or return;
+    my $triage = eval { $registry->triage_for($node->{release},
+        XPerl::Installer::Platform::current()) };
+    if ($@) {
+        $self->_fail($node, "invalid registry triage: $@");
+        return 1;
+    }
+    return unless $triage;
+    $node->{triage} = $triage;
+    $self->_fail($node, "deferred ($triage->{disposition}): $triage->{reason}");
+    return 1;
 }
 
 sub _add_requirements ($self, $node, $meta) {
@@ -309,14 +326,20 @@ sub _fail ($self, $node, $reason, $receipt = undef) {
     $node->{reason} = (split /\n/, $reason)[0];
     $node->{receipt} = $receipt if defined $receipt;
     if (defined $receipt && -f $receipt) {
-        my $record = eval {
-            open my $input, '<', $receipt or die $!;
-            $JSON->decode(do { local $/; <$input> });
-        };
+        my $record = _receipt_record($receipt);
         $node->{user_action} = $record->{user_action}
             if ref($record) eq 'HASH' && ref($record->{user_action}) eq 'HASH';
+        $node->{triage} = $record->{triage}
+            if ref($record) eq 'HASH' && ref($record->{triage}) eq 'HASH';
     }
     $self->{progress}->($self->_public($node)) if $self->{progress};
+}
+
+sub _receipt_record ($path) {
+    open my $input, '<', $path or die "cannot read receipt $path: $!\n";
+    my $record = $JSON->decode(do { local $/; <$input> });
+    close $input or die "cannot close receipt $path: $!\n";
+    return $record;
 }
 
 # ------------------------------------------------------------ scheduling
@@ -605,7 +628,12 @@ sub _record ($self, $node, $outcome) {
         $self->_mark_cycles;
         return;
     }
-    if ($self->{builder}->repair_enabled && $outcome->{receipt}) {
+    my $triaged;
+    if ($outcome->{receipt} && -f $outcome->{receipt}) {
+        my $record = _receipt_record($outcome->{receipt});
+        $triaged = $record->{triage};
+    }
+    if (!$triaged && $self->{builder}->repair_enabled && $outcome->{receipt}) {
         $node->{state} = 'repair_pending';
         $node->{reason} = $outcome->{reason} // 'installation failed';
         $node->{receipt} = $outcome->{receipt};
@@ -662,7 +690,7 @@ sub _public ($self, $node) {
         cpan_path => $node->{path},
         status => $node->{state},
         (map { defined $node->{$_} ? ($_ => $node->{$_}) : () }
-         qw(reason receipt user_action)),
+         qw(reason receipt user_action triage)),
         prerequisites => [sort keys %{$node->{prereqs}}],
     );
     $public{resumed} = JSON::PP::true if $node->{resumed};

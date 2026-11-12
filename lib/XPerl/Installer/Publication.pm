@@ -264,7 +264,14 @@ sub _publish_one ($self, $builder, $queue_path) {
                 '--receipt', $queued->{receipt}, '--record-only');
     my $directory = $registry->_distribution_directory($release);
     my $relative = File::Spec->abs2rel($directory, $root);
-    my @paths = ($relative);
+    # Status records use the archive's identity. Metadata can disagree in
+    # spelling, case or version suffix, while patches use metadata identity.
+    # Publish both when they differ, without staging other queued results.
+    my $status_directory = $registry->status_directory_for($release);
+    my %seen_paths;
+    my @paths = grep { !$seen_paths{$_}++ } map {
+        File::Spec->abs2rel($_, $root)
+    } grep { -d $_ } ($directory, $status_directory);
     my $index = File::Spec->catfile($directory, 'index.json');
     if (-f $index) {
         my $data = _read_json($index);

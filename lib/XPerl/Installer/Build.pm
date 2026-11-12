@@ -19,8 +19,9 @@ use IO::Select;
 use IO::Uncompress::Unzip;
 use IPC::Open3;
 use JSON::PP;
+use POSIX qw(WNOHANG);
 use Symbol qw(gensym);
-use Time::HiRes qw(time);
+use Time::HiRes qw(time sleep);
 use XPerl::Installer::Agent;
 use XPerl::Installer::Platform;
 use XPerl::Installer::Proposal;
@@ -28,6 +29,7 @@ use XPerl::Installer::Publication;
 use XPerl::Installer::Fetch;
 use XPerl::Installer::Config;
 use XPerl::Installer::Upstream;
+use XPerl::Installer::Triage;
 
 sub new ($class, %args) {
     die "installation prefix is required\n"
@@ -63,6 +65,15 @@ sub new ($class, %args) {
     my $phase_timeout = $args{phase_timeout} // 3600;
     die "phase timeout must be a non-negative integer\n"
         unless $phase_timeout =~ /\A\d+\z/;
+    my $phase_memory_mb = $args{phase_memory_mb} // 0;
+    my $phase_log_mb = $args{phase_log_mb} // 32;
+    for my $limit ([phase_memory_mb => $phase_memory_mb],
+                   [phase_log_mb => $phase_log_mb]) {
+        die "$limit->[0] must be a non-negative integer\n"
+            unless !ref($limit->[1]) && $limit->[1] =~ /\A\d+\z/;
+    }
+    die "phase_memory_mb requires a Unix shell with ulimit -d\n"
+        if $phase_memory_mb && ($^O eq 'MSWin32' || !-x '/bin/sh');
     # The per-release attempt count and call timeout always bound a repair.
     # A run-wide call cap is available when the caller explicitly requests it.
     my $repair_limit = $args{repair_limit};
@@ -111,6 +122,8 @@ sub new ($class, %args) {
         repair_attempts => $repair_attempts,
         repair_timeout => $repair_timeout,
         phase_timeout => $phase_timeout,
+        phase_memory_mb => $phase_memory_mb,
+        phase_log_mb => $phase_log_mb,
         repair_limit => $repair_limit,
         repair_interval => $repair_interval,
         repair_rate_file => $args{repair_rate_file} // File::Spec->catfile(
@@ -288,10 +301,20 @@ sub install ($self, $release, %options) {
         layout        => $self->{layout},
         workdir       => $work,
         phases        => [],
+        resource_limits => { phase_memory_mb => $self->{phase_memory_mb},
+                             phase_log_mb => $self->{phase_log_mb} },
     };
 
     my $error;
     eval {
+        if ($self->{registry}) {
+            my $triage = $self->{registry}->triage_for($release, $record->{platform});
+            if ($triage) {
+                $record->{triage} = $triage;
+                $record->{repair_skipped} = 'recorded failure triage';
+                die "deferred ($triage->{disposition}): $triage->{reason}\n";
+            }
+        }
         my $source = _unpack($release->{archive}, $work);
         my $original;
         if ($self->repair_enabled) {
@@ -409,7 +432,7 @@ sub install ($self, $release, %options) {
                 my $lock = $phase eq 'install' && $self->{install_lock}
                     ? _lock($self->{install_lock}) : undef;
                 my $started = time;
-                my ($status, $timed_out) = $self->_run($source, $log,
+                my ($status, $timed_out, $resource_limit) = $self->_run($source, $log,
                     { phase => $phase,
                       unsafe_inc => $release->{x_use_unsafe_inc},
                       ($self->{phase_timeout}
@@ -428,6 +451,7 @@ sub install ($self, $release, %options) {
                     exit_status => $status, log => $log,
                     started => $started, finished => $finished,
                     ($timed_out ? (timed_out => JSON::PP::true) : ()),
+                    ($resource_limit ? (resource_limit => $resource_limit) : ()),
                     ($configuration_error
                         ? (validation_error => $configuration_error) : ()),
                 };
@@ -437,6 +461,8 @@ sub install ($self, $release, %options) {
                 next unless $status || $configuration_error;
                 my $failure = $configuration_error
                     ? "$configuration_error; see $log\n"
+                    : $resource_limit
+                    ? "$phase exceeded log limit of $self->{phase_log_mb} MiB; see $log\n"
                     : $timed_out
                     ? "$phase timed out after $self->{phase_timeout} seconds; see $log\n"
                     : "$phase failed (exit $status); see $log\n";
@@ -490,6 +516,8 @@ sub install ($self, $release, %options) {
                     xperl => $perl,
                     xperl_version => "$^V",
                     platform => $record->{platform},
+                    resource_limits => $record->{resource_limits},
+                    ($resource_limit ? (resource_limit => $resource_limit) : ()),
                     applied_patches => \@applied_patches,
                     known_patches => \@known_patches,
                     failed_phase => $phase,
@@ -499,10 +527,20 @@ sub install ($self, $release, %options) {
                     failed_log => $log,
                     response_path => $response_path,
                     upstream => XPerl::Installer::Upstream->resources($source),
+                    cpan_testers => XPerl::Installer::Upstream->testers($release),
                     upstream_research_path => $research_path,
                     recipes => \@recipes,
-                    guidance => 'Check upstream repository issues, pull requests '
-                        . 'and fixes before editing. Record findings in '
+                    guidance => 'Repair demonstrated XPerl or PERL_RC_STACK '
+                        . 'defects, even if ordinary RC-stack Perl fails too. '
+                        . 'Triage unexplained or remaining failures using '
+                        . 'upstream reports, CPAN Testers and ordinary Perl '
+                        . 'controls. Record exact control versions and build '
+                        . 'flags. Defer unrelated upstream failures, obsolete '
+                        . 'releases or unsupported platforms with evidence '
+                        . 'through a deferred response containing triage. '
+                        . 'Age and a red matrix cell alone prove neither. '
+                        . 'Check upstream repository issues, pull requests '
+                        . 'and fixes. Record findings in '
                         . 'upstream_research_path, or explain unavailable access. '
                         . 'Do not get stuck in a debug/change loop. '
                         . 'If you are not making progress, return '
@@ -535,7 +573,8 @@ sub install ($self, $release, %options) {
                     ? _lock($self->{repair_lock}) : undef;
                 _space_repair_calls($self->{repair_rate_file},
                                     $self->{repair_interval});
-                my ($repair_status, $repair_timed_out) = $self->_run($source, $repair_log,
+                my ($repair_status, $repair_timed_out, $repair_resource_limit) =
+                    $self->_run($source, $repair_log,
                     { timeout => $self->{repair_timeout} }, @repair_command);
                 undef $repair_lock;
                 ++$repair_calls;
@@ -543,6 +582,8 @@ sub install ($self, $release, %options) {
                     name => 'repair', attempt => $attempt,
                     command => \@repair_command, request => $request_path,
                     exit_status => $repair_status, log => $repair_log,
+                    ($repair_resource_limit
+                        ? (resource_limit => $repair_resource_limit) : ()),
                 };
                 # Keep research even when the agent hands the failure back
                 # to a human. A malformed report must not discard a repair.
@@ -556,6 +597,8 @@ sub install ($self, $release, %options) {
                 push @{$record->{upstream_research}}, $research;
                 die "repair timed out after $self->{repair_timeout} seconds; see $repair_log\n"
                     if $repair_timed_out;
+                die "repair exceeded log limit of $self->{phase_log_mb} MiB; see $repair_log\n"
+                    if $repair_resource_limit;
                 die "repair failed (exit $repair_status); see $repair_log\n"
                     if $repair_status;
                 if (-f $response_path) {
@@ -564,6 +607,11 @@ sub install ($self, $release, %options) {
                     if ($response->{status} eq 'needs_user_action') {
                         $record->{user_action} = $response->{action};
                         die "user action required: $response->{action}{message}; see $response_path\n";
+                    }
+                    if ($response->{status} eq 'deferred') {
+                        $record->{triage} = $response->{triage};
+                        die "deferred ($response->{triage}{disposition}): "
+                            . "$response->{triage}{reason}\n";
                     }
                     die { defer => [$response->{dependency}] };
                 }
@@ -650,6 +698,10 @@ sub _read_repair_response ($path) {
     die "invalid repair response $path: $@\n" if $@;
     die "invalid repair response $path: expected schema 1\n"
         unless ref($response) eq 'HASH' && ($response->{schema} // '') eq '1';
+    if (($response->{status} // '') eq 'deferred') {
+        return { status => 'deferred',
+                 triage => XPerl::Installer::Triage->validate($response->{triage}) };
+    }
     if (($response->{status} // '') eq 'needs_cpan_dependency') {
         my $module = $response->{module} // '';
         die "invalid repair response $path: expected CPAN module name\n"
@@ -889,9 +941,20 @@ sub _run ($self, $source, $log_path, @command) {
         $ENV{NONINTERACTIVE_TESTING} = 1 if $phase eq 'test';
     }
     chdir $source or die "cannot enter $source: $!\n";
-    # A command with a deadline runs in its own process group, so that on
-    # timeout everything it started can be stopped, not just the command.
-    my $group = defined $deadline && $^O ne 'MSWin32';
+    # Limit build children without constraining the installer or an agent's
+    # runtime. Data limits avoid the huge virtual reservations used by V8.
+    # Preserve any lower limit inherited from the caller.
+    if ($options->{phase} && $self->{phase_memory_mb}) {
+        @command = ('/bin/sh', '-c',
+            'limit=$1; shift; current=$(ulimit -S -d) || exit 125; '
+            . 'if [ "$current" != unlimited ] && [ "$current" -lt "$limit" ]; '
+            . 'then limit=$current; fi; '
+            . 'ulimit -S -d "$limit" || exit 125; exec "$@"',
+            'xperl-build-limit', $self->{phase_memory_mb} * 1024, @command);
+    }
+    my $log_limit = ($self->{phase_log_mb} // 32) * 1024 * 1024;
+    # Stop descendants as well as the direct child when either guard fires.
+    my $group = (defined($deadline) || $log_limit) && $^O ne 'MSWin32';
     @command = ($^X, '-e',
         'setpgrp(0, 0); exec { $ARGV[0] } @ARGV or die "cannot exec $ARGV[0]: $!\\n"',
         '--', @command) if $group;
@@ -905,39 +968,53 @@ sub _run ($self, $source, $log_path, @command) {
     close $input;
     my $select = IO::Select->new($output, $error);
     my $timed_out = 0;
-    while ($select->count) {
+    my ($resource_limit, $written, $status) = (undef, 0, undef);
+    while ($select->count || !defined $status) {
         my $remaining = defined $deadline ? $deadline - time : undef;
         if (defined $remaining && $remaining <= 0) {
             $timed_out = 1;
             last;
         }
-        my @ready = $select->can_read($remaining);
-        if (!@ready) {
-            if (defined $deadline && time >= $deadline) {
-                $timed_out = 1;
-                last;
-            }
-            next;
-        }
+        # A child may close its pipes before it exits. Poll waitpid too, so
+        # that closing stdout cannot bypass the phase deadline.
+        my $poll = defined($remaining) && $remaining < 0.2 ? $remaining : 0.2;
+        my @ready = $select->count ? $select->can_read($poll) : ();
+        sleep($poll) unless $select->count;
         for my $fh (@ready) {
             my $length = sysread($fh, my $buffer, 8192);
             die "cannot read command output: $!\n" unless defined $length;
-            if ($length) { print {$log} $buffer }
+            if ($length) {
+                my $keep = $log_limit && $written + $length > $log_limit
+                    ? $log_limit - $written : $length;
+                print {$log} substr($buffer, 0, $keep)
+                    or die "cannot write $log_path: $!\n";
+                $written += $keep;
+                if ($keep < $length) {
+                    $resource_limit = 'log';
+                    last;
+                }
+            }
             else { $select->remove($fh); close $fh }
         }
+        last if $resource_limit;
+        $status = $? if !defined($status) && waitpid($pid, WNOHANG) == $pid;
     }
-    if ($timed_out) {
+    if ($timed_out || $resource_limit) {
         kill 9, -$pid if $group;
-        kill 9, $pid;
+        kill 9, $pid unless defined $status;
         for my $fh ($select->handles) { close $fh }
     }
-    waitpid($pid, 0);
-    my $status = $?;
+    if (!defined $status) {
+        waitpid($pid, 0);
+        $status = $?;
+    }
+    print {$log} "\n[xperl-install: output exceeded $self->{phase_log_mb} MiB; phase stopped]\n"
+        if $resource_limit;
     chdir $before or die "cannot return to $before: $!\n";
     close $log or die "cannot close $log_path: $!\n";
-    my $exit = $timed_out ? 124
+    my $exit = $resource_limit ? 125 : $timed_out ? 124
         : $status & 127 ? 128 + ($status & 127) : $status >> 8;
-    return wantarray ? ($exit, $timed_out) : $exit;
+    return wantarray ? ($exit, $timed_out, $resource_limit) : $exit;
 }
 
 1;

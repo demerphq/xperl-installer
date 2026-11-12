@@ -22,7 +22,8 @@ sub load ($class, $path) {
     my $install = $config->{install} // {};
     die "config install must be a table\n" unless ref($install) eq 'HASH';
     _keys($install, [qw(prefix mirror cache workdir registry jobs repair_jobs
-                       phase_timeout native_prefixes configure_args layout publish)], 'install');
+                       phase_timeout phase_memory_mb phase_log_mb native_prefixes
+                       configure_args layout publish)], 'install');
     $install->{configure_args} = $class->configure_args($install->{configure_args})
         if exists $install->{configure_args};
     if (exists $install->{publish}) {
@@ -46,10 +47,11 @@ sub load ($class, $path) {
                 && defined($install->{repair_jobs})
                 && $install->{repair_jobs} =~ /\A[1-9]\d*\z/;
     }
-    if (exists $install->{phase_timeout}) {
-        die "config install.phase_timeout must be a non-negative integer\n"
-            unless !ref($install->{phase_timeout}) && defined($install->{phase_timeout})
-                && $install->{phase_timeout} =~ /\A\d+\z/;
+    for my $key (qw(phase_timeout phase_memory_mb phase_log_mb)) {
+        next unless exists $install->{$key};
+        die "config install.$key must be a non-negative integer\n"
+            unless !ref($install->{$key}) && defined($install->{$key})
+                && $install->{$key} =~ /\A\d+\z/;
     }
     if (exists $install->{native_prefixes}) {
         my $prefixes = $install->{native_prefixes};
@@ -57,7 +59,7 @@ sub load ($class, $path) {
             unless ref($prefixes) eq 'ARRAY'
                 && !grep { ref || !defined || !length } @$prefixes;
     }
-    for my $key (grep { !/\A(?:jobs|repair_jobs|phase_timeout|native_prefixes|configure_args)\z/ }
+    for my $key (grep { !/\A(?:jobs|repair_jobs|phase_timeout|phase_memory_mb|phase_log_mb|native_prefixes|configure_args)\z/ }
                  keys %$install) {
         die "config install.$key must be a nonempty string\n"
             if ref($install->{$key}) || !defined($install->{$key})

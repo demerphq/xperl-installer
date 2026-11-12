@@ -30,5 +30,15 @@ the repair request's upstream research protocol. If access is unavailable,
 record that and continue local diagnosis. Do not post upstream messages
 without authorization.
 
+Fix demonstrated XPerl and PERL_RC_STACK incompatibilities, including RC
+defects reproduced on ordinary RC-stack Perl. Retest, then triage any
+remaining or unexplained failure. Check upstream reports, CPAN Testers,
+native prerequisites and ordinary Perl controls where available. Record
+the exact control Perl version and build flags. Do not infer a matching
+failure from a red matrix cell or infer obsolescence from age alone.
+Defer unrelated upstream breakage, unsupported platforms and superseded
+releases with evidence through the structured triage response. Never remove
+legitimate platform guards or weaken tests to produce a passing result.
+
 For changes in the perldev workspace, also follow the workspace `AGENTS.md`
 and `style_rules/` guidance. Use `git-compose-commit` for commits.

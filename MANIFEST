@@ -19,6 +19,7 @@ lib/XPerl/Installer/Ported.pm
 lib/XPerl/Installer/Proposal.pm
 lib/XPerl/Installer/Publication.pm
 lib/XPerl/Installer/Registry.pm
+lib/XPerl/Installer/Triage.pm
 lib/XPerl/Installer/Upstream.pm
 planning/bootstrap.md
 planning/automatic-ports-publication.md
@@ -55,4 +56,6 @@ t/repair.t
 t/repair-limits.t
 t/site-layout.t
 t/timeout.t
+t/resource-limits.t
+t/triage.t
 t/upstream.t

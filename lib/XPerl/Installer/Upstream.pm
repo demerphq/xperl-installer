@@ -7,6 +7,12 @@ use CPAN::Meta;
 use File::Spec;
 use JSON::PP;
 
+sub testers ($class, $release) {
+    my $query = "$release->{distribution} $release->{distribution_version}";
+    $query =~ s/([^A-Za-z0-9_.~-])/sprintf '%%%02X', ord $1/eg;
+    return "https://fast2-matrix.cpantesters.org/?dist=$query";
+}
+
 # Release metadata supplies starting points, not a reason to contact the
 # network during ordinary installs. The repair agent does the investigation.
 sub resources ($class, $source) {

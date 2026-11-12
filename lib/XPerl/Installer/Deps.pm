@@ -317,7 +317,7 @@ sub _distribution_identity ($meta, $path) {
 
 sub _identity_from_path ($path) {
     my ($name, $version) = $path =~
-        m{/([A-Za-z0-9][A-Za-z0-9_.-]*)-([vV]?[0-9][A-Za-z0-9._-]*)\.(?:tar\.gz|tgz|zip)\z};
+        m{/([A-Za-z0-9][A-Za-z0-9_.-]*)-([vV]?[0-9][A-Za-z0-9._-]*)\.(?:tar\.(?:gz|bz2|xz)|tgz|zip)\z};
     die "cannot determine distribution identity from $path\n"
         unless defined $name && defined $version;
     return ($name, $version);

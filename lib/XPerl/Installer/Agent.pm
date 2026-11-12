@@ -91,6 +91,40 @@ using XPERL_VERSION for conditional XS changes. Consider threads, debugging,
 PERL_RC_STACK, longdouble and quadmath. Do not claim validation on a build
 you have not tested. Use the installed interpreter named in the request.
 
+Fix a demonstrated XPerl or PERL_RC_STACK incompatibility first, including
+when ordinary Perl with the RC stack has the same defect. Rebuild and retest.
+If a different failure remains, triage that failure before more editing.
+For an unexplained failure, investigate its cause before attempting a port.
+Check the host OS and native dependencies, upstream reports, CPAN Testers
+(the request includes a starting URL), and an ordinary Perl control when
+available. Record the exact control Perl version and build configuration.
+A failing matrix entry alone does not prove it is the same failure. Do not
+claim a control was run when it was not, or treat an older Perl result as a
+test of current blead. A failure on ordinary RC-stack Perl is not a reason
+to defer a known RC-stack repair.
+
+Do not rewrite obsolete or long-broken packages, or remove legitimate OS
+guards to make a package build on the wrong platform. Old age alone is not
+proof of obsolescence. Leave unresolved evidence as unresolved. If this
+release is unsuitable or broken independently of our changes, write a
+deferred response rather than spending repeated repair calls on it:
+{"schema":1,"status":"deferred","triage":{"schema":1,"disposition":"unsupported-platform","reason":"This release requires a different OS","references":[{"url":"https://example.org/project/platform-support"}],"baselines":[]}}
+Other dispositions are obsolete-superseded, upstream-broken and unresolved.
+upstream-broken requires a matching ordinary Perl failure and evidence links.
+Each baseline has implementation "perl", perl_version (e.g. "v5.45.5"), os,
+archname, result (same-failure, different-failure, or pass), and a build table
+with numeric 0/1 values for rc_stack, useithreads, usemultiplicity, debugging,
+uselongdouble and usequadmath. Supply actual observations, never defaults
+guessed from the version. Keep the reason portable and on one line. Put local
+commands, logs and full paths in your .xperl-repair-ATTEMPT-notes.* files.
+
+The request records resource limits. A stopped phase is not proof that the
+distribution is broken. Diagnose output loops and memory failures without
+removing safeguards or weakening tests. Ask for human help if a legitimate
+build needs more resources. Use the specified XPerl for investigation scripts
+and JSON work products where practical (Cpanel::JSON::XS is available here
+when installed); report any missing capability instead of silently assuming it.
+
 Before editing, check the distribution's upstream repository, bug reports
 and pending pull requests for this failure. Start with the request's upstream
 resources and the release's documentation. Check relevant fixes and recent

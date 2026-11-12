@@ -33,6 +33,7 @@ Usage: xperl-install resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Mo
                      [--repair-interval SECONDS]
                      [--repair-limit N] [--repair-jobs K]
                      [--jobs K] [--phase-timeout SECONDS]
+                     [--phase-memory-mb MiB] [--phase-log-mb MiB]
                      [--native-prefix DIR]... [--no-native-prefix]
                      [--layout auto|site|install_base]
                      [--publish auto|direct|pr|off]
@@ -41,6 +42,7 @@ Usage: xperl-install resolve [--config FILE] [--mirror URL|DIR] [--cache DIR] Mo
                      [--dry-run] [--json] [--resume] [--action-shell]
                      [--jobs K]
                      [--phase-timeout SECONDS]
+                     [--phase-memory-mb MiB] [--phase-log-mb MiB]
                      [--native-prefix DIR]... [--no-native-prefix]
                      [--layout auto|site|install_base]
                      [--publish auto|direct|pr|off]
@@ -72,6 +74,9 @@ porting. It reports candidates; a match does not establish a build failure.
 GLOBS defaults to '*.c, *.xs, *.h, *.inc'; --ignore defaults to 'ppport.h'.
 --phase-timeout SECONDS stops a configure, build, test or install phase, and
 every process it started, after that many seconds (default 3600; 0 disables).
+--phase-memory-mb MiB sets a per-process build data limit using ulimit -d
+(Unix only; default 0, disabled). It excludes the installer and AI agent.
+--phase-log-mb MiB caps each command's captured output (default 32; 0 disables).
 --native-prefix DIR adds DIR/include, DIR/lib and DIR/lib/pkgconfig to the
 compiler, linker and pkg-config search paths of builds. Without it, the
 Homebrew installation is used (HOMEBREW_PREFIX, or on macOS /opt/homebrew or
@@ -89,7 +94,7 @@ my ($config_path, $agent, $mirror, $cache, $workdir, $refresh, $prefix,
     $repair_attempts, $repair_timeout, $repair_limit,
     $repair_interval,
     $dry_run, $as_json, $resume, @only, @exclude, $jobs, $from, $phase_timeout,
-    @native_prefixes, $no_native_prefix, $repair_jobs,
+    @native_prefixes, $no_native_prefix, $repair_jobs, $phase_memory_mb, $phase_log_mb,
     $layout, $publish, $action_shell, @patterns, $scan_files, $scan_ignore);
 GetOptionsFromArray(
     \@ARGV,
@@ -115,6 +120,8 @@ GetOptionsFromArray(
     'exclude=s' => \@exclude,
     'jobs=i' => \$jobs,
     'phase-timeout=i' => \$phase_timeout,
+    'phase-memory-mb=i' => \$phase_memory_mb,
+    'phase-log-mb=i' => \$phase_log_mb,
     'native-prefix=s' => \@native_prefixes,
     'no-native-prefix' => \$no_native_prefix,
     'layout=s' => \$layout,
@@ -125,6 +132,10 @@ GetOptionsFromArray(
     'ignore=s' => \$scan_ignore,
 ) or die usage();
 my $explicit_publish = $publish;
+my %explicit_limits = (
+    (defined $phase_memory_mb ? (phase_memory_mb => $phase_memory_mb) : ()),
+    (defined $phase_log_mb ? (phase_log_mb => $phase_log_mb) : ()),
+);
 
 my $settings = defined($config_path)
     ? XPerl::Installer::Config->load($config_path) : {};
@@ -137,6 +148,8 @@ $prefix   //= $defaults->{prefix};
 $registry //= $defaults->{registry};
 $jobs     //= $defaults->{jobs} // 4;
 $phase_timeout //= $defaults->{phase_timeout};
+$phase_memory_mb //= $defaults->{phase_memory_mb};
+$phase_log_mb //= $defaults->{phase_log_mb};
 $repair_jobs //= $defaults->{repair_jobs} // 1;
 $layout //= $defaults->{layout};
 $publish //= $defaults->{publish} // 'auto';
@@ -197,6 +210,12 @@ if ($action eq 'install' && $resume) {
                       repair_interval phase_timeout layout publish)};
     $publish //= 'auto';
     $publish = $explicit_publish if defined $explicit_publish;
+    # Safety limits supplied now override an older session, including an
+    # explicit zero. Old sessions receive the current defaults.
+    $phase_memory_mb = $explicit_limits{phase_memory_mb}
+        // $defaults->{phase_memory_mb} // $options->{phase_memory_mb};
+    $phase_log_mb = $explicit_limits{phase_log_mb}
+        // $defaults->{phase_log_mb} // $options->{phase_log_mb};
     @native_prefixes = @{$options->{native_prefixes}};
     # A config supplied on resume replaces only the distribution entries it
     # names. An empty argument list explicitly clears a saved entry.
@@ -245,6 +264,8 @@ sub builder ($ports) {
         (defined $repair_interval ? (repair_interval => $repair_interval) : ()),
         (defined $repair_timeout ? (repair_timeout => $repair_timeout) : ()),
         (defined $phase_timeout ? (phase_timeout => $phase_timeout) : ()),
+        (defined $phase_memory_mb ? (phase_memory_mb => $phase_memory_mb) : ()),
+        (defined $phase_log_mb ? (phase_log_mb => $phase_log_mb) : ()),
         native_prefixes => [@native_prefixes],
         configure_args => $configure_args,
         (defined $layout ? (layout => $layout) : ()),
@@ -325,6 +346,8 @@ dispatch ($action) {
                 repair_limit => $repair_limit,
                 repair_interval => $repair_interval,
                 phase_timeout => $phase_timeout, layout => $layout,
+                phase_memory_mb => $install_builder->{phase_memory_mb},
+                phase_log_mb => $install_builder->{phase_log_mb},
                 publish => $publish,
                 configure_args => $configure_args,
                 native_prefixes => [map { File::Spec->rel2abs($_) }

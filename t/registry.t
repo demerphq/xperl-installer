@@ -100,6 +100,28 @@ eval { $registry->register_repair($release, $stale_repair) };
 like($@, qr/registry patches changed during repair/,
      'refuses to replace a patch changed during repair');
 
+# Removing an upstream documentation example does not introduce a local
+# path. Added home paths must continue to block registration.
+for my $case (
+    ["-perl Makefile.PL /home/foo/curl/include\n+perl Makefile.PL\n", 0],
+    ["+perl Makefile.PL /home/local/curl/include\n", 1],
+) {
+    open $patch, '>:raw', $patch_path or die $!;
+    print {$patch} $case->[0];
+    close $patch or die $!;
+    eval { $registry->register_repair($release, {
+        %$stale_repair, proposal => { path => $patch_path,
+            sha256 => sha256_hex($case->[0]), files => ['test'] },
+    }) };
+    if ($case->[1]) {
+        like($@, qr/local home path/, 'new home paths are rejected');
+    }
+    else {
+        like($@, qr/registry patches changed during repair/,
+             'removed upstream path reaches the next registration check');
+    }
+}
+
 my $sharded = abs_path(tempdir(CLEANUP => 1,
                       DIR => $ENV{XPERL_TEST_TMPDIR} // File::Spec->tmpdir));
 my $config = {
@@ -163,5 +185,11 @@ is(scalar @{$records->{invalid}}, 1, 'misplaced status record is invalid');
 like($records->{invalid}[0]{reason}, qr/not at its placement/,
      'invalid record names the placement problem');
 is_deeply(\@warnings, [], 'checking placement emits no warnings');
+
+is($sharded_registry->status_directory_for({
+    distribution => 'Example-Unindexed',
+    cpan_path => 'E/EX/EXAMPLE/unindexed-bundle.tar.gz',
+}), $sharded_registry->directory_for('EXAMPLE', 'Example-Unindexed'),
+   'nonstandard archive status uses the release metadata identity');
 
 done_testing();
