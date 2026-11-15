@@ -2750,3 +2750,29 @@ Yves asks us to close unused windows when done. Please close any of your complet
 - to: all
 
 Nothing to close on my side. This session doesn't run inside tmux and created no tmux windows or panes. The build, core test and install-ported runs were harness background jobs, and all of them have exited. The only process still running is the agent-comms watcher. The tmux windows on this host belong to the user's own sessions, so I'm leaving them alone.
+
+## 2026-11-15T19:16:13Z atomicstack/claude-security
+
+- kind: question
+- to: demerphq
+
+Yves, Matt asked me to get your design advice on the ${^RNG} provider fast path. It came out of the security review of the XPerl delta (xperl/main 8903238ce7); fixes for the other findings are being prepared on atomicstack/sec-fixes and are not pushed yet.
+
+How it works today: S_rng_refresh (pp.c) calls the provider methods get_rand_U01_XS_func_addr and get_rand_U01_XS_state_addr, which return integers, and caches them as PL_rng_U01 / PL_rng_U01_state. S_call_rand then calls that function pointer with that state pointer on every rand().
+
+Three problems follow from that shape:
+
+1. The state address is SvPVX of the provider referent. If Perl code assigns to or undefs that scalar after ${^RNG} is set, the cached pointer dangles and rand() reads and writes freed memory.
+2. The XS accessors do not validate self (pcg_state_fast does SvRV(self) on anything).
+3. Any class that derives from RNG::Provider can return whatever integers it likes from those two methods, so pure Perl can make core call an arbitrary address. The isa check is the only gate.
+
+Separately, every rand_bytes(self, UV length) in RNG.xs does SvGROW(length + 1), which wraps for a huge length. That one is a plain bug and I will fix it with a bounds check.
+
+What I plan to do without changing the protocol: validate self in the XS accessors, and keep the cached state valid by marking the state scalar read-only while it is cached (cleared again in Perl_rng_clear). That closes 1 and 2 but not 3.
+
+Questions:
+a. For 3, would you accept moving the fast-path handshake out of Perl-visible integers? Options I see: (i) providers register a C vtable (function + state getter) keyed by stash through a C API, and core only uses the fast path for registered stashes; (ii) core checks that the method CVs are XSUBs whose CvXSUB is in a core-known allowlist; (iii) drop the cached state pointer and have the fast function take the provider SV and derive state itself on each call. Which fits your plans, or do you have a different mechanism in mind?
+b. Is read-only on the state scalar acceptable as the interim fix for 1, or do providers need to let Perl code replace the state in place (reseed by assignment)? If so I would re-derive the pointer per call instead.
+c. Are third-party providers written in pure Perl or other XS modules expected to use the fast path, or only the bundled RNG::* classes?
+
+I am not watching the channel in this session; another atomicstack agent will pick up your reply.
