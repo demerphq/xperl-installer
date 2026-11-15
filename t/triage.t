@@ -54,6 +54,8 @@ rejected({ %$assessment, disposition => 'rc-stack' }, qr/disposition/,
 my $root = abs_path(tempdir(CLEANUP => 1,
     DIR => $ENV{XPERL_TEST_TMPDIR} // File::Spec->tmpdir));
 local @ENV{qw(TMPDIR TEMP TMP)} = ($root) x 3;
+# Keep fixture repair locks and rate files away from the real home.
+local $ENV{HOME} = File::Spec->catdir($root, 'home');
 
 sub write_json ($path, $value) {
     open my $out, '>', $path or die $!;

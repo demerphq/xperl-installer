@@ -17,8 +17,9 @@ my $root = abs_path(tempdir(CLEANUP => 1,
                    DIR => $ENV{XPERL_TEST_TMPDIR} // File::Spec->tmpdir));
 
 # Fixture agents must not compete with a real installer's per-user repair
-# lock or rate file. Child interpreters derive both from their temporary dir.
+# lock or rate file. Child interpreters keep both under their home directory.
 local @ENV{qw(TMPDIR TEMP TMP)} = ($root) x 3;
+local $ENV{HOME} = File::Spec->catdir($root, 'home');
 
 my $mirror = File::Spec->catdir($root, 'mirror');
 my $cache = File::Spec->catdir($root, 'cache');

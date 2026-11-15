@@ -1,4 +1,9 @@
 Unreleased
+    Keep the per-user repair lock and rate file in ~/.xperl/repair/ (mode
+    0700) instead of the shared temporary directory, and open both without
+    following symlinks, refusing anything but a regular file owned by the
+    current user, so another local user cannot truncate a victim file or
+    steer the repair rate gate.
     Bound captured command logs (32 MiB by default), support per-process
     build data limits, and retain limits across resumed sessions. Enforce
     deadlines even after a child closes its output pipes.

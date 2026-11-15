@@ -11,12 +11,18 @@ use File::Temp qw(tempdir);
 use IO::Compress::Gzip qw(gzip $GzipError);
 use JSON::PP;
 use Test::More;
+use Time::HiRes qw(time);
+use XPerl::Installer::Build;
 
 # A repair command may start a paid AI agent. A caller can cap the whole run,
 # while the normal case gives every failed release its own repair allowance.
 
 my $root = abs_path(tempdir(CLEANUP => 1,
                             DIR => $ENV{XPERL_TEST_TMPDIR} // File::Spec->tmpdir));
+# Child installers keep their per-user repair lock and rate file under this
+# home, so fixture agents never compete with a real installer's files.
+my $home = File::Spec->catdir($root, 'home');
+make_path($home);
 my $mirror = File::Spec->catdir($root, 'mirror');
 my $cache = File::Spec->catdir($root, 'cache');
 my $releases = File::Spec->catdir($mirror, qw(authors id E EX EXAMPLE));
@@ -89,6 +95,7 @@ my $script = File::Spec->catfile($FindBin::Bin, '..', 'bin', 'xperl-install');
 my $run = 0;
 sub install ($module, @extra) {
     ++$run;
+    local $ENV{HOME} = $home;
     local $ENV{XPERL_AGENT_LOG} = File::Spec->catfile($root, "agent-$run.log");
     my $errors = File::Spec->catfile($root, "stderr-$run");
     open my $saved, '>&', \*STDERR or die $!;
@@ -136,5 +143,70 @@ is($status, 0, 'a spaced run still repairs both releases');
 @sorted = sort { $a->[1] <=> $b->[1] } @$calls;
 cmp_ok($sorted[1][1] - $sorted[0][1], '>=', 1.9,
        'agent calls begin at least two seconds apart');
+
+# The default coordination files live in a private per-user directory under
+# the installer's home state, never in the shared temporary directory.
+my $private = File::Spec->catdir($home, '.xperl', 'repair');
+ok(-d $private && !-l $private, 'the run created a private repair directory');
+is((stat $private)[2] & 07777, 0700, 'the repair directory is mode 0700');
+for my $name (qw(rate lock)) {
+    my $file = File::Spec->catfile($private, $name);
+    ok(-f $file && !-l $file, "the repair $name file is a regular file");
+    is((stat $file)[2] & 07777, 0600, "the repair $name file is mode 0600");
+}
+{
+    local $ENV{HOME} = $home;
+    my $builder = XPerl::Installer::Build->new(
+        prefix => File::Spec->catdir($root, 'defaults-prefix'),
+        workdir => File::Spec->catdir($root, 'defaults-work'));
+    my $tmp = abs_path(File::Spec->tmpdir);
+    for my $key (qw(repair_rate_file repair_lock)) {
+        my $path = $builder->{$key};
+        is(index($path, "$private/"), 0, "the default $key is in the private directory");
+        my $parent = abs_path((File::Spec->splitpath($path))[1]);
+        isnt($parent, $tmp, "the default $key is not directly in the temporary directory");
+    }
+}
+
+# A planted symlink must not let another local user redirect the rate file
+# or lock onto a file the installer's user can write.
+my $victim = File::Spec->catfile($root, 'victim');
+sub plant ($name) {
+    open my $out, '>', $victim or die $!;
+    print {$out} "precious\n";
+    close $out or die $!;
+    my $link = File::Spec->catfile($root, $name);
+    unlink $link;
+    symlink $victim, $link or die $!;
+    return $link;
+}
+sub victim_body () {
+    open my $in, '<', $victim or die $!;
+    return do { local $/; <$in> };
+}
+
+my $link = plant('planted-rate');
+ok(!eval { XPerl::Installer::Build::_space_repair_calls($link, 1); 1 },
+   'a symlinked rate file is refused');
+like($@, qr/repair rate file/, 'the refusal names the rate file');
+is(victim_body(), "precious\n", 'the rate file symlink target is unchanged');
+
+$link = plant('planted-lock');
+ok(!eval { XPerl::Installer::Build::_repair_lock($link); 1 },
+   'a symlinked repair lock is refused');
+like($@, qr/repair lock/, 'the refusal names the repair lock');
+is(victim_body(), "precious\n", 'the repair lock symlink target is unchanged');
+
+# Ordinary spacing still records a start time and delays the next call.
+my $rate = File::Spec->catfile($root, 'spacing.rate');
+XPerl::Installer::Build::_space_repair_calls($rate, 1);
+my $started = time;
+XPerl::Installer::Build::_space_repair_calls($rate, 1);
+cmp_ok(time - $started, '>=', 0.9, 'a second call waits for the interval');
+open my $recorded, '<', $rate or die $!;
+like(scalar <$recorded>, qr/\A\d+\.\d+\n\z/, 'the rate file holds one timestamp');
+my $lock = XPerl::Installer::Build::_repair_lock(
+    File::Spec->catfile($root, 'spacing.lock'));
+ok($lock, 'a fresh repair lock can be taken');
 
 done_testing();

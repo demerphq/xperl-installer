@@ -20,6 +20,9 @@ use Time::HiRes qw(sleep time);
 
 my $root = abs_path(tempdir(CLEANUP => 1,
                             DIR => $ENV{XPERL_TEST_TMPDIR} // File::Spec->tmpdir));
+# Fixture agents must not compete with a real installer's per-user repair
+# lock or rate file, which child interpreters keep under their home.
+local $ENV{HOME} = File::Spec->catdir($root, 'home');
 my $mirror = File::Spec->catdir($root, 'mirror');
 my $cache = File::Spec->catdir($root, 'cache');
 my $releases = File::Spec->catdir($mirror, qw(authors id E EX EXAMPLE));

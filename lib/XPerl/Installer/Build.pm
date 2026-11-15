@@ -8,7 +8,7 @@ use CPAN::Meta;
 use Config;
 use Cwd qw(abs_path getcwd);
 use Digest::SHA;
-use Fcntl qw(:flock);
+use Fcntl qw(:flock :mode O_APPEND O_CREAT O_RDWR);
 use File::Basename qw(dirname);
 use File::Copy qw(copy);
 use File::Find qw(finddepth);
@@ -108,6 +108,13 @@ sub new ($class, %args) {
         man3dir => $Config{installsiteman3dir},
         %{$args{site_dirs} // {}},
     );
+    # Repair coordination files are shared by every installer process of this
+    # user, so their default names are fixed, but they live in a private
+    # directory rather than the shared temporary directory.
+    my $repair_dir = _repair_state_dir();
+    my $repair_default = sub ($name) {
+        defined $repair_dir ? File::Spec->catfile($repair_dir, $name) : undef;
+    };
     my $self = bless {
         native_prefixes => [@$native_prefixes],
         configure_args => $configure_args,
@@ -126,14 +133,16 @@ sub new ($class, %args) {
         phase_log_mb => $phase_log_mb,
         repair_limit => $repair_limit,
         repair_interval => $repair_interval,
-        repair_rate_file => $args{repair_rate_file} // File::Spec->catfile(
-            File::Spec->tmpdir, "xperl-repair-$<.rate"),
+        repair_rate_file => $args{repair_rate_file}
+            // $repair_default->('rate'),
         repair_calls => 0,
         # One repair worker per process uses this per-user lock. Parallel
         # runs with more than one repair worker opt out explicitly.
         repair_lock => exists $args{repair_lock} ? $args{repair_lock}
-            : File::Spec->catfile(File::Spec->tmpdir,
-                                  "xperl-repair-$<.lock"),
+            : $repair_default->('lock'),
+        repair_dir => $repair_dir,
+        repair_defaults => !defined($args{repair_rate_file})
+            || !exists($args{repair_lock}),
     }, $class;
     $self->enable_publication($args{publish}) if defined $args{publish};
     return $self;
@@ -569,8 +578,9 @@ sub install ($self, $release, %options) {
                                          source => $source,
                                          new_files => \%new_files);
                 ++$self->{repair_calls};
+                $self->_prepare_repair_files;
                 my $repair_lock = $self->{repair_lock}
-                    ? _lock($self->{repair_lock}) : undef;
+                    ? _repair_lock($self->{repair_lock}) : undef;
                 _space_repair_calls($self->{repair_rate_file},
                                     $self->{repair_interval});
                 my ($repair_status, $repair_timed_out, $repair_resource_limit) =
@@ -766,14 +776,66 @@ sub _lock ($path) {
     return $handle;    # released when the handle is closed
 }
 
+# The per-user directory that holds the default repair lock and rate file.
+# It sits beside the download cache under ~/.xperl. Nothing is created here;
+# _prepare_repair_files does that only when a repair actually runs.
+sub _repair_state_dir () {
+    my $home = $ENV{HOME};
+    $home = (getpwuid $>)[7] unless defined $home && length $home;
+    return undef unless defined $home && length $home;
+    return File::Spec->catdir($home, '.xperl', 'repair');
+}
+
+sub _prepare_repair_files ($self) {
+    return unless $self->{repair_defaults};
+    die "cannot find a home directory for repair coordination files; "
+        . "set HOME\n" unless defined $self->{repair_dir};
+    _private_dir($self->{repair_dir});
+}
+
+# Create the repair directory if needed and insist that it is a real
+# directory owned by this user that nobody else can reach.
+sub _private_dir ($dir) {
+    make_path($dir, { mode => 0700 }) unless -e $dir || -l $dir;
+    my @stat = lstat $dir or die "cannot inspect repair directory $dir: $!\n";
+    die "repair directory $dir is not a directory owned by you\n"
+        unless S_ISDIR($stat[2]) && $stat[4] == $>;
+    if ($stat[2] & 077) {
+        chmod 0700, $dir
+            or die "cannot make repair directory $dir private: $!\n";
+    }
+}
+
+# O_NOFOLLOW is missing on a few platforms. There an lstat check before the
+# open is the best available guard.
+my $O_NOFOLLOW = eval { Fcntl::O_NOFOLLOW() } // 0;
+
+# Open a repair coordination file for reading and appending without following
+# a planted symlink, then make sure it is a regular file owned by this user.
+# A file someone else created could otherwise stall or steer the rate gate.
+sub _open_private ($path, $what) {
+    die "$what $path is a symbolic link\n" if !$O_NOFOLLOW && -l $path;
+    sysopen my $handle, $path, O_RDWR | O_APPEND | O_CREAT | $O_NOFOLLOW, 0600
+        or die "cannot open $what $path: $!\n";
+    my @stat = stat $handle or die "cannot inspect $what $path: $!\n";
+    die "$what $path is not a regular file owned by you\n"
+        unless S_ISREG($stat[2]) && $stat[4] == $>;
+    return $handle;
+}
+
+sub _repair_lock ($path) {
+    my $handle = _open_private($path, 'repair lock');
+    flock($handle, LOCK_EX) or die "cannot lock repair lock $path: $!\n";
+    return $handle;    # released when the handle is closed
+}
+
 # A short agent call should not let the next worker start immediately. The
 # timestamp is shared by installer processes owned by this user; the lock is
 # held only while selecting and recording the next start time.
 sub _space_repair_calls ($path, $interval) {
     return unless $interval;
 
-    open my $gate, '+>>', $path
-        or die "cannot open repair rate file $path: $!\n";
+    my $gate = _open_private($path, 'repair rate file');
     flock($gate, LOCK_EX)
         or die "cannot lock repair rate file $path: $!\n";
     seek $gate, 0, 0 or die "cannot read repair rate file $path: $!\n";

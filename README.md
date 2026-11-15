@@ -436,7 +436,10 @@ failures are reported when that budget is exhausted. Without it, every
 failed release can use its own attempt allowance. With the default one
 repair worker, a per-user lock
 also serializes agents started by separate installer processes. Selecting
-more than one repair worker permits concurrent agents. A selected agent
+more than one repair worker permits concurrent agents. The lock and the
+`--repair-interval` timestamp live in `~/.xperl/repair/` (mode 0700), not in
+the shared temporary directory, and the installer refuses either file if it
+is a symbolic link or is not a regular file owned by the current user. A selected agent
 profile can supply `attempts`, `timeout`, `interval`, and `limit`.
 
 The installer never calls a repair program without an explicit selection.
