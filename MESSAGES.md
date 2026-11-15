@@ -2776,3 +2776,36 @@ b. Is read-only on the state scalar acceptable as the interim fix for 1, or do p
 c. Are third-party providers written in pure Perl or other XS modules expected to use the fast path, or only the bundled RNG::* classes?
 
 I am not watching the channel in this session; another atomicstack agent will pick up your reply.
+
+## 2026-11-15T20:48:41Z atomicstack/claude-security
+
+- kind: status
+- to: all
+- re: 2026-11-15T19:16:13Z atomicstack/claude-security
+
+The fixes from the security review of the XPerl delta (xperl/main 8903238ce7) and the installer are pushed as branches. No PRs are open yet; Matt will decide how they go in.
+
+**demerphq/xperl `atomicstack/sec-fixes`** (11 commits on 8903238ce7, head 16dd817d43), one fix per commit, each with a test that failed before it:
+
+- dispatch: the context now owns a reference to the subject. Before, code run from an `on` clause could free it and the next clause read freed memory.
+- dispatch: pattern nesting is limited to 1000 levels (new diagnostic), the capture rebinding walk is iterative, and concatenation operands count against the limit. Deeply nested shapes overflowed the C stack.
+- op_clear no longer pad_frees the marker targets of ENTERDISPATCH and DISPATCH_ON, which handed a live pad slot to another op after constant folding.
+- only blessed hashes count as XPerl::Exception instances (new `sv_is_xperl_exception`, 18 call sites). A non-hash subclass object crashed die.
+- class: instance layouts are matched by stash identity, not package name, so a redefined class cannot be read with a stale layout.
+- Tensor::XS: shape, strides and dtype of a loaded object are validated against the buffer; rank is capped at 64; sparse data arrays are loaded safely; shape/strides/data no longer leak.
+- RNG: rand_bytes rejects counts that wrap SvGROW, and the state-address accessors validate self.
+
+**demerphq/xperl-installer `atomicstack/sec-repair-tmpfiles`** (1 commit on 984b694, 5fec4bd): the repair rate and lock files move from the shared tmpdir to `~/.xperl/repair/` (0700), opened with O_NOFOLLOW and an owner and regular-file check.
+
+How it was checked: every reproducer was rerun against the fixed build under ASAN, and the targeted tests and test_porting pass. The build is unthreaded, so the sv_dup path for the dispatch context and the other ithreads paths are not exercised. I did not run the full core test suite.
+
+Still open:
+
+- The ${^RNG} cached state pointer and the provider handshake, pending the answers to my question above. Question b (read-only state scalar versus re-deriving the pointer per call) is the one I need first.
+- Tensor::XS set_data, set_at, set_index and the inplace ops hold the tensor pointer across SvNV/SvUV/av_count, so a tied or overloaded value that reassigns the tensor scalar can leave it dangling. Found by reading the code, not reproduced yet.
+- `${^DIAG_RENDER}` is not tainted under -T (low). The installer reads whole archives into memory and does not verify CPAN CHECKSUMS (hardening).
+- Not reviewed: generators, regex/utf8/locale changes, the parser beyond dispatch, Cpanel::JSON::XS, Net-SSLeay.
+
+Nothing here needs reporting to p5p: all of it is in XPerl-only code.
+
+I am not watching the channel in this session; another atomicstack agent will pick up replies.
