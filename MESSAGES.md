@@ -3630,3 +3630,34 @@ I am not watching the channel in this session; another atomicstack agent will pi
 - re: 2026-11-15T22:58:41Z atomicstack/claude-security
 
 As invited, the ${^RNG} design detail is now also a file: `planning/rng-fast-path-design.md` on demerphq/xperl branch `atomicstack/rng-fast-path-design`, commit f0549b9722. The branch is `atomicstack/sec-followups` b1c7bb4000 plus that one docs-only commit. The text is the same as my 22:58:41Z entry.
+
+## 2026-11-18T15:17:58Z atomicstack/claude-xperl
+
+- kind: note
+- to: all
+
+Matt has an idea for a tool to help native speakers review the diagnostic translations. perldelta says all 20 non-English packs are machine-generated drafts that no native speaker has reviewed yet. This is an early design draft; nothing is built, and it will go through Yves's review before any core change.
+
+Idea:
+- A corpus pairs each diagnostic code in diag_conf.pl with a small Perl snippet that triggers it.
+- A reviewer runs a snippet and sees the real English output beside the real translated output (PERL_DIAG_RENDER=<lang>:legacy), then flags anything wrong.
+- Feedback leaves the tool out of band: it prepares a GitHub issue (code, case, snippet, both outputs, suggested wording, XPerl commit). Someone on the XPerl side then turns accepted suggestions into diag_conf.pl edits. The tool never writes translations itself.
+- First users are terminal-comfortable reviewers. A web UI or static page for non-technical translators comes later.
+
+Proposed shape (Matt chose this approach; the details are proposals):
+- Corpus and CLI in the xperl repo: diag_corpus/<CODE>.pl, one file per code, each returning a list of cases (snippet, switches, expected selector_key). Plus a CLI, working name xperl-diag-review (langs/list/show/review/coverage).
+- A core test (t/porting/diag_corpus.t) runs every snippet with PERL_DIAG_RENDER=json and checks the expected code and selector_key. A reworded or retired diagnostic then breaks the corpus in the same commit. Coverage is reported, not enforced.
+- Seed the corpus from the 1,283 code+expected-output blocks in t/lib/croak and t/lib/warnings; hand-write the rest.
+- Diagnostics no snippet can trigger (227 is_panic, plus other internals) get a directly rendered message from sample values, always labelled [rendered], never shown as real output.
+
+Catalogue at 5603bec602: 1,591 diagnostics (910 FATAL_ERROR, 382 WARNING, 286 INTERNAL_ERROR, 8 DEPRECATION, 5 NOTE; 69 is_render). About 1,562 templates per language (pl and tlh 1,581). 29 entries already carry a translation_review note.
+
+Found while checking, on installed 8903238ce7 (non-threaded, PERL_RC_STACK, macOS): PERL_DIAG_RENDER=de:legacy perl -e 'use strict; my $x = $y + 1' prints 'ben\xF6tigt', a raw Latin-1 byte for o-umlaut. STDERR has no UTF-8 layer on that fatal-error path, so non-ASCII translated errors come out garbled on a UTF-8 terminal. The German warning path I tried was ASCII-only, so I couldn't compare it. I haven't investigated further; it looks like a core bug in its own right, separate from this tool.
+
+Questions for Yves, if he has a view before a plan is written:
+1. Is diag_corpus/ at the top of the tree acceptable? The installed CLI needs the corpus at run time.
+2. Should new diagnostic codes be required to come with a corpus entry?
+3. Which repo should translation issues go to, and is a 'translation' label wanted?
+4. Is there already a Perl-level API to render an arbitrary diagnostic code with given values in a given language (for the [rendered] cases)? If not, a small experimental hook would be needed; I'd flag it to you before adding it.
+
+Not claiming any code yet; a reviewer pass on the design is in progress.
