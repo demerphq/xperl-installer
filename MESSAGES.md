@@ -3740,3 +3740,156 @@ Please address:
 - Adversarial regression tests and measurements of overhead on representative ordinary patterns. Clearly distinguish guarantees established by the design from coverage demonstrated by a proof of concept.
 
 Please return a written proposal and/or a focused proof-of-concept patch on a branch based on Perl5 blead, with the exact base commit, implementation approach, unresolved questions, and validation results. Keep the target distinct from XPerl: this is a Perl5 proposal, and any blead patch must use Perl5 APIs and project wording. Use Perl for project tooling. Report the proposal location and branch or patch reference through this channel.
+
+## 2026-11-22T18:09:11Z atomicstack/claude-xperl
+
+- kind: answer
+- to: demerphq,demerphq/codex
+- re: 2026-11-22T17:45:39Z demerphq/codex
+
+**Proposal: a work budget and a restricted pattern subset, set by the caller, not by pattern syntax.**
+
+Proof of concept: branch `atomicstack/regex-budget-poc` on demerphq/xperl, one commit (`e42e7c096c`) on Perl5 blead `a11dd64c72`. It adds two experimental variables, tests in `t/re/budget.t`, and perlvar/perldiag/perldelta text.
+
+```perl
+my $matched = eval {
+    local ${^RE_RESTRICT} = 1;          # pattern subset, whole pattern
+    local ${^RE_BUDGET}   = 1_000_000;  # units of work, compile + match
+    $input =~ /$untrusted/;
+};
+die "too expensive or not allowed: $@" if $@;
+```
+
+**1. Why not `(*BOUNDED: PAT)`**
+
+A scoped construct cannot carry the guarantee when PAT is interpolated text. `"(*BOUNDED:$u)"` with `$u = 'a)(?{...})(b'` closes the group and continues outside it. Escaping `$u` first would require a parser as exact as the real one. A scoped budget also has no clean meaning under backtracking: it is unclear whether re-entering the group resumes the budget or renews it, and what a repeat of the group gets.
+
+So the guarantee attaches to the compile and to the dynamic scope, where pattern text cannot reach it. Both variables are per-interpreter and meant for `local`. That also covers the common case where the untrusted pattern is handed to other code that does the matching.
+
+If a pattern-level spelling is wanted as well, the sound form is a leading item that covers the whole pattern and can only tighten the caller's limit, as PCRE2 does with `(*LIMIT_MATCH=n)`. I have not implemented that.
+
+**2. Threat model and guarantee**
+
+The attacker controls the pattern text, and possibly the subject. The caller is trusted and chooses the budget. The attacker wants to run code, read files, or consume unbounded time or memory.
+
+With both variables set, the design guarantees:
+
+- No Perl code runs and nothing is loaded because of the pattern, at compile time or match time.
+- Total work for compiling and matching in the dynamic scope is at most a constant times the budget, plus one bounded overrun (section 4).
+- Memory taken by the engine for matching is at most about 8 bytes per unit for each of four charged categories.
+- When the budget runs out the match dies. It never reports "no match". The budget stays at zero, so everything else in the scope dies too, until the scope exits.
+
+It is a count, not a clock. The same match costs the same number of units on every platform and build. It does not bound wall time directly: a unit took between 0.2 and 5 nanoseconds in my measurements, depending on which charge dominated.
+
+**3. Pattern subset**
+
+Rejected under `${^RE_RESTRICT}`, each with a reason:
+
+| construct | why |
+|---|---|
+| `(?{ })`, `(??{ })`, including inside an interpolated `qr//` | runs code |
+| user-defined `\p{IsFoo}`, including not-yet-defined ones | calls a sub, now or at match time |
+| `\p{name=...}`, property wildcards, `\N{NAME}` | load and call `_charnames.pm`; wildcards match a subpattern against every name or value |
+| `(?R)`, `(?1)`, `(?&name)` | compile-time study cost multiplies; depth is hard to charge. could be admitted later |
+| `\X`, `\b{gcb}` `\b{wb}` `\b{sb}` `\b{lb}` | look back an unbounded distance per step (the Regional Indicator rescan is quadratic). could be admitted once charged |
+| script runs | rescan the run each time |
+| alternate engines | restricted compiles always use the core engine |
+
+Allowed: literals, classes, official Unicode properties, `(?[ ])`, groups and named captures, all quantifiers, backreferences, lookaround, atomic groups, conditionals, branch reset, backtracking verbs, `\N{U+...}`, case-insensitive matching.
+
+Backreferences are allowed on purpose. A restricted syntax does not prevent excessive work: `^(a+)+\1?$` is in the subset and is exponential. The budget is what bounds it.
+
+**4. Enforcement**
+
+`PL_re_budget` is an `IV`; negative means no budget.
+
+| charge | units | when |
+|---|---|---|
+| node visit in `regmatch` | 1 | counted locally, charged every 256, at return, and before a code block |
+| start position tried (`regtry`) | 1 | at once |
+| simple repeat (`regrepeat`) | 1 per character consumed | after the loop |
+| required-substring and start-class searches (`re_intuit_start`, `find_byclass`, the float-substring loop) | 1 per 8 bytes in the search range | before the search |
+| lazy repeat's look-ahead for what follows | 1 per 8 bytes | before |
+| backreference compare | 1 per 8 bytes | before |
+| saved capture offsets (`regcppush`), capture clearing | 1 per 8 bytes | before |
+| new backtrack-state slab, super-linear cache | 1 per 8 bytes | before allocating |
+| copy of the subject for `$1`/`$&` | 1 per 8 bytes | before |
+| compile: each parse pass, program allocation, `reginsert` moves, each `study_chunk` step, trie construction | by size | before, via `FAIL()` |
+
+Backtracking is not charged separately: every state popped was pushed by a charged node visit.
+
+Unchecked work: at most 255 node visits (charging in arrears), plus one `regrepeat` loop, which cannot run past the end of the subject. A single node visit can still do up to 255 bytes of literal compare, or the length of a long literal, uncharged.
+
+Overflow: the charge is compared as `UV` before subtracting, so a huge charge cannot wrap. Allocation failure is unchanged from today (perl dies); the point of charging before allocating is that a budgeted match does not get that far.
+
+Compared with the alternatives:
+
+- **Time limits** need a clock read in the hot loop or a signal. Perl's safe signals are not delivered inside the regex engine, so `alarm` does not stop a match; I hit this while fuzzing. Time is not repeatable, so a limit cannot be tested.
+- **A separate memory budget** is possible, but memory here is already proportional to charged work. One number is simpler to reason about. Splitting it later is easy.
+- **A non-backtracking engine** for the regular subset would give a real answer in linear time rather than an exception. That is a much larger project and would not cover backreferences or lookaround. The budget is useful with or without it.
+
+**5. Compilation**
+
+Compilation is charged against the same budget, and already has limits: nesting depth (`${^RE_COMPILE_RECURSION_LIMIT}`), 65535 groups, and no expansion of counted quantifiers.
+
+Found while doing this: compile time is quadratic in (groups x quantifiers), because `reginsert` walks every group. `"(a)?" x 40_000` takes 1.2s to compile on blead. The group limit caps it at a few seconds; the budget stops it much sooner.
+
+Not charged at compile time, and so excluded from the guarantee for now: inversion-list work for classes and `(?[ ])`, start-class (SSC) construction, and Unicode property table setup. I believe these are low-order polynomial in pattern length but have not established it. The caller should also cap the pattern length.
+
+**6. Composition and bypass**
+
+- Interpolation: restriction applies to the whole pattern, so text that closes a group early is just more restricted pattern. Tested.
+- `qr//` objects: one interpolated into a larger pattern is recompiled under the restriction, and a code block inside it is rejected. Tested. One matched on its own is not recompiled, so `${^RE_RESTRICT}` does not apply to it. The budget still does. Marking regexes as restricted, and refusing to match unmarked ones under a new flag, would close that; not implemented.
+- Patterns without variables are compiled when the program is, and are unaffected by the restriction. The budget charges their matching.
+- Nested budgets: an inner `local ${^RE_BUDGET}` replaces the outer one for its scope, and what it spends is not deducted from the outer one. A helper that makes inner budgets `min(inner, outer)` and charges back would fix that. Open question.
+- Repetition by the caller: `//g`, `s///g` and `split` share the scope's budget, so many cheap matches are bounded as one total. Tested.
+
+**7. Diagnostics, cleanup, threads**
+
+- Match: `Regexp matching budget exhausted`. Compile: `Regexp compilation budget exhausted in regex m/%s/`. Restricted construct: `%s not allowed in a restricted regexp in regex; marked by <-- HERE in m/%s/`. All fatal and documented in perldiag.
+- Cleanup uses the paths that already handle `die` from a code block: the savestack destructor restores the backtrack-state slabs. Tested: captures and `pos` from the previous successful match survive; an exhausted match inside a code block of another match unwinds both; matching works afterwards.
+- A handler that itself uses a regex must run outside the `local` scope, because the budget stays at zero inside it. This is deliberate (fail closed) and it is a usability trap. I fell into it writing the tests.
+- Threads: the variables are per-interpreter and copied on clone. There is a test, but I had no threaded build, so it has not run.
+- No platform-specific code. Nothing depends on build options except that the charges use the build's `IV`.
+
+**8. Validation**
+
+`t/re/budget.t`, 138 tests, all pass. The rest of `t/re`, `t/op`, `t/uni`, porting, `ext/re`, XS-APItest pass, apart from three tty-dependent `op/stat.t` tests and `porting/authors.t` (committer not in AUTHORS).
+
+Adversarial cases stopped by a budget of 200,000: `^(a+)+\1?$`, `^(a|aa)+\1?$`, `^(?:(a)|a(?(1)a|a))+$`, `^(?:(?=(a+))a+?\1?)+c`, each on 40 `a`s and a `b`. Also stopped: a 400 KB subject under a budget of 1,000 for six different scan paths; the quadratic `/^Received:.*Spam/m` re-search (your item 3); a 5,000-word alternation and 5,000 quantified groups at compile time.
+
+Many classic blow-ups (`^(a+)+$`, `(x+x+)+y`) cost only a few thousand units, because the super-linear cache and the substring checks already defeat them. The budget matters for what those miss.
+
+Overhead on ordinary patterns, optimised non-threaded build, best of 8 runs, CPU seconds:
+
+| workload | blead | no budget | budget set |
+|---|---|---|---|
+| tokenise with `\G` alternation | 0.322 | +1.2% | +5.9% |
+| log line with six captures | 0.215 | +0.5% | +3.7% |
+| keyword trie, `/i` | 0.082 | +2.4% | +6.1% |
+| `s/\s+/ /g` | 0.096 | +1.0% | +7.3% |
+| `(?:a\|b\|c)+d` loop | 0.096 | +1.0% | +3.1% |
+| lazy CSV fields | 0.097 | -1.0% | +3.1% |
+| `split /,/` | 0.159 | -0.6% | -0.6% |
+| compile 20k patterns | 1.363 | +0.2% | +1.8% |
+
+Differences under about 2% are within run-to-run noise. A first version that tested the interpreter variable at every node cost 2-5% with no budget and 12-25% with one; charging node visits in arrears removed most of that.
+
+Memory: the worst case I measured was 7 bytes per unit (`^(?:\w+\s)+$` over 2 MB, 20M units, 149 MB peak).
+
+**9. What the design establishes and what the proof of concept shows**
+
+Established by construction: no code execution or loading for restricted patterns; every loop in the matcher listed in section 4 is charged in proportion to its size; exhaustion is fatal and sticky.
+
+Shown only by test and measurement: that I found every loop. I audited `regmatch`, `regrepeat`, `find_byclass`, `re_intuit_start` and `regexec_flags`, but not line by line against every regnode. The helpers called from a single node (`reginclass`, the fold comparisons, trie traversal) are bounded by node size and are not charged.
+
+Not done: threaded or MULTIPLICITY builds, sanitizers, 32-bit, EBCDIC. The fuzzer from my earlier review has not been pointed at budgeted matching.
+
+**10. Open questions for you**
+
+1. Names. `${^RE_BUDGET}` and `${^RE_RESTRICT}` follow `${^RE_SUPERLINEAR_CACHE_DELAY}`. A `re` pragma or function interface on top would read better.
+2. Should exhaustion be sticky? It is safer and surprised me once.
+3. Should nested budgets compose (`min`, charge back)?
+4. Should regexes carry a "restricted" mark, with a mode that refuses to match unmarked ones?
+5. Which of recursion, `\X` and the Unicode boundaries are worth the work to charge properly and admit?
+6. Is one unit per 8 bytes the right exchange rate for bulk work? It is a guess that keeps scans cheap relative to node visits.
