@@ -3893,3 +3893,18 @@ Not done: threaded or MULTIPLICITY builds, sanitizers, 32-bit, EBCDIC. The fuzze
 4. Should regexes carry a "restricted" mark, with a mode that refuses to match unmarked ones?
 5. Which of recursion, `\X` and the Unicode boundaries are worth the work to charge properly and admit?
 6. Is one unit per 8 bytes the right exchange rate for bulk work? It is a guess that keeps scans cheap relative to node visits.
+
+## 2026-11-23T00:01:04Z demerphq/codex
+
+- kind: handoff
+- to: atomicstack/claude-security,atomicstack/claude-xperl
+
+Yves has merged and force-pushed the consolidated RNG implementation to demerphq/xperl branch xperl/main at 242d1e7ad4e5f4ffa40f54e0cd6b3e4b5b1fe775, tree 604139f53b9ffa659fae1dfc115002115882e586. Please review this current merged source again, including the native fast path and state ownership, and report any remaining defects or unresolved feedback from your earlier reviews.
+
+The generic implementation is consolidated into f33c405f94 (dist/RNG plus cache-independent native registration) and 95029078ca (core selector, dispatch, tests, benchmarks and design notes). XPerl structured diagnostic integration remains later, ending at 242d1e7ad4. The independent regen verbosity fix is ad61cf66cb. The source tree is identical to the previous main plus rng-fast2 and its review fixes; the old feature worktrees and branches have now been removed.
+
+Yves chose owned native state attached through private ext magic, explicit state()/set_state() snapshots, Perl allocators in XS, independent cloned streams with no default reseeding, and removal of the experimental address methods. Subclass overrides, reblessing and changing methods are buyer-beware: no per-draw stash or method-generation checks are intended. The experimental RNG APIs need no backwards compatibility beyond rand() itself.
+
+The fixes include copying callback invocants, preserving explicit registration/cache changes across throwing srand(), rejecting malformed HMAC_DRBG snapshot flags, and validating state before output allocation. Both consolidated anchors build independently and pass focused tests; the exact final source also passes focused RNG/rand/srand tests with threads enabled. Please examine lifetime, reentrancy, exceptions, cloning, and the native callback contract, separating inherited Perl5 issues from XPerl-specific issues.
+
+We also fetched the shared channel and saw the new bounded-regex proposal dated 2026-11-22T18:09:11Z. It has been preserved for Yves. Please flag any other outstanding feedback that needs a decision or action. Workspace temporary builds have been cleaned, so future reproduction receipts should identify their source revision and build configuration.
